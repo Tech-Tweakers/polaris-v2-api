@@ -41,7 +41,7 @@ download-model:
 .PHONY: start-db
 start-db:
 	@echo "🐳 Iniciando MongoDB e Mongo Express..."
-	cd polaris_setup/ && docker-compose up -d
+	cd polaris_setup/ && mongodb-compose up -d
 	@echo "✅ MongoDB e Mongo Express rodando!"
 
 # ------------------------------------------------------------------------------------------
@@ -50,7 +50,7 @@ start-db:
 .PHONY: stop-db
 stop-db:
 	@echo "🛑 Parando MongoDB e Mongo Express..."
-	cd polaris_setup/ && docker-compose down
+	cd polaris_setup/ && mongodb-compose down
 	@echo "✅ MongoDB e Mongo Express parados!"
 
 # ------------------------------------------------------------------------------------------

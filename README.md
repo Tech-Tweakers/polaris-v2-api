@@ -124,48 +124,47 @@ cd polaris-v3
 ./local-setup.sh
 ```
 
-O menu interativo irá:
-
-- Instalar dependências  
-- Criar arquivos `.env`  
-- Baixar os modelos de IA  
-- Iniciar os serviços  
-- Configurar webhooks  
-- Lançar a aplicação
+The interactive setup will:
+- Install dependencies
+- Create .env files
+- Download AI models
+- Start all services
+- Configure webhooks
+- Launch the application
 
 ---
 
 ## 🛠️ Manual Installation
 
 <details>
-<summary>Clique para ver as instruções manuais</summary>
+<summary>Click to view manual installation instructions</summary>
 
-**1. Instalar dependências**
+**1. Setup Dependencies**
 
 ```bash
 make install
 ```
 
-**2. Criar arquivos de ambiente**
+**2. Create Environment Files*
 
 ```bash
 make create-env-api
 make create-env-bot
 ```
 
-**3. Baixar modelo local**
+**3. Download LLM Model for Local Inferences**
 
 ```bash
 make download-model
 ```
 
-**4. Iniciar banco de dados**
+**4. Setup and Start MongoDB**
 
 ```bash
 make start-db
 ```
 
-**5. Iniciar todos os serviços**
+**5. Start All Services**
 
 ```bash
 make start-all
@@ -233,5 +232,5 @@ curl -X POST http://localhost:8000/inference/   -H "Content-Type: application/js
 ```
 ---
 
-Desenvolvido com ❤️ pela equipe **Tech-Tweakers**.
+Developed with ❤️ by **Tech-Tweakers** team.
 
