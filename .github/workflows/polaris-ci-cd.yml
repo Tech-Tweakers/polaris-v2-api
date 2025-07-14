@@ -46,7 +46,7 @@ jobs:
         run: PYTHONPATH=./ pytest tests/test_polaris_api.py --maxfail=1 --disable-warnings
 
   test-lint-polaris-telegram:
-    name: 🚀 Tests and Linter - Polaris Telegram
+    name: 🚀 Tests and Linter - Polaris Integrations
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout do código
@@ -68,18 +68,18 @@ jobs:
       - name: 📦 Instalar dependências
         run: |
           pip install --upgrade pip
-          pip install -r telegram_bot/requirements.txt
+          pip install -r polaris_integrations/requirements.txt
           pip install black pytest requests_mock
 
       - name: 🎨 Rodar Linter
-        run: black --check telegram_bot
+        run: black --check polaris_integrations
 
       - name: 🧪 Executar Testes
         env:
           TELEGRAM_API_URL: ${{ secrets.TELEGRAM_API_URL }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           POLARIS_API_URL: ${{ secrets.POLARIS_API_URL }}
-        run: PYTHONPATH=./ pytest tests/test_telegram_bot.py --maxfail=1 --disable-warnings
+        run: PYTHONPATH=./ pytest tests/test_polaris_integrations.py --maxfail=1 --disable-warnings
 
   create-pr:
     name: 🔀 Criar PR para Main
