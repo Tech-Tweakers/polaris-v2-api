@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Função para exibir o menu
+# Função para exibir o menu...
 show_menu() {
     clear
     echo "=================================="
