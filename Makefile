@@ -6,7 +6,7 @@ MODEL_DIR := $(DEPLOY_PATH)/models
 MODEL_URL := https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf?download=true  # Exemplo de URL
 
 # ------------------------------------------------------------------------------------------
-# 🛠️ Configuração inicial
+# 🛠️ Configuração inicial...
 # ------------------------------------------------------------------------------------------
 .PHONY: setup
 setup:
