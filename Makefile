@@ -1,4 +1,4 @@
-# Variáveis de ambiente
+# Variáveis de ambiente...
 DEPLOY_PATH := $(shell pwd)
 PYTHON := python3
 PIP := pip3
