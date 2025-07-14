@@ -5,18 +5,13 @@
 <a href="#"><img src="https://img.shields.io/badge/Polaris-AI%20Assistant-blue?style=for-the-badge&logo=robot" alt="Polaris Logo"/></a>
 <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python" alt="Python"/></a>
 <a href="https://fastapi.tiangolo.com"><img src="https://img.shields.io/badge/FastAPI-Latest-green?style=flat-square&logo=fastapi" alt="FastAPI"/></a>
-<a href="https://mongodb.com"><img src="https://img.shields.io/badge/MongoDB-6.0-green?style=flat-square&logo=mongodb" alt="MongoDB"/></a>
+<a href="https://mongodb.com"><img src="https://img.shields.io/badge/MongoDB-4.0-green?style=flat-square&logo=mongodb" alt="MongoDB"/></a>
 <a href="https://docker.com"><img src="https://img.shields.io/badge/Docker-Compose-blue?style=flat-square&logo=docker" alt="Docker"/></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License"/></a>
-
-<br><br>
 
 **A sophisticated AI assistant that combines conversational AI, voice synthesis, document processing, and multi-platform integration.**
 
 </div>
----
-
-## 🧭 Índice
 
 - [🎯 Overview](#-overview)
 - [✨ Key Features](#-key-features)
