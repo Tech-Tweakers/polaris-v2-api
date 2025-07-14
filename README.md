@@ -30,13 +30,11 @@
 - [🧪 Testing](#-testing)
 - [❤️ Credits](#-desenvolvido-com--pela-equipe-tech-tweakers)
 
----
 
 ## 🎯 Overview
 
 **Polaris** is a next-generation AI assistant that integrates cutting-edge technologies into a unified, scalable platform. It delivers intelligent responses via Telegram, web interfaces, and mobile apps.
 
----
 
 ## ✨ Key Features
 
@@ -64,7 +62,6 @@
 - Web UI support  
 - Mobile-ready architecture
 
----
 
 ## 📁 Project Structure
 
@@ -100,8 +97,6 @@ polaris-v3/
 └── 🧪 Makefile                 # 🛠️ Dev workflow commands and automation
 ```
 
----
-
 ## 🚀 Quick Start
 
 ### 🔧 Prerequisites
@@ -126,8 +121,6 @@ The interactive setup will:
 - Start all services
 - Configure webhooks
 - Launch the application
-
----
 
 ## 🛠️ Manual Installation
 
@@ -166,8 +159,6 @@ make start-all
 ```
 
 </details>
-
----
 
 ## ⚙️ Configuration
 
@@ -215,8 +206,6 @@ ELEVEN_MODEL_ID="eleven_multilingual_v2"
 
 GROQ_API_KEY="gsk_your-groq-api-key"
 ```
-
----
 
 ## 🧪 Testing
 
