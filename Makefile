@@ -22,7 +22,7 @@ setup:
 install:
 	@echo "📦 Instalando dependências do projeto..."
 	$(PIP) install -r polaris_api/requirements.txt
-	$(PIP) install -r telegram_bot/requirements.txt
+	$(PIP) install -r polaris_integrations/requirements.txt
 	@echo "✅ Dependências instaladas!"
 
 # ------------------------------------------------------------------------------------------
@@ -85,21 +85,21 @@ start-api:
 	@echo "✅ API rodando!"
 
 # ------------------------------------------------------------------------------------------
-# 🤖 Rodar Telegram Bot
+# 🤖 Rodar Polaris Integrations
 # ------------------------------------------------------------------------------------------
-.PHONY: start-bot
-start-bot:
-	@echo "🤖 Iniciando Telegram Bot..."
-	@if [ -f telegram_bot/.env ]; then \
-		export TELEGRAM_TOKEN=$$(grep "^TELEGRAM_TOKEN" telegram_bot/.env | cut -d '=' -f2); \
+.PHONY: start-integrations
+start-integrations:
+	@echo "🤖 Iniciando Polaris Integrations..."
+	@if [ -f polaris_integrations/.env ]; then \
+		export TELEGRAM_TOKEN=$$(grep "^TELEGRAM_TOKEN" polaris_integrations/.env | cut -d '=' -f2); \
 		export TELEGRAM_API_URL="https://api.telegram.org/bot$${TELEGRAM_TOKEN}"; \
 	else \
-		echo "⚠️  .env do Telegram Bot não encontrado!"; \
+		echo "⚠️  .env do Polaris Integrations não encontrado!"; \
 		exit 1; \
 	fi
 	sudo apt install -y ffmpeg
-	cd telegram_bot && $(PYTHON) main.py
-	@echo "✅ Telegram Bot rodando!"
+	cd polaris_integrations && $(PYTHON) main.py
+	@echo "✅ Polaris Integrations rodando!"
 
 
 # ------------------------------------------------------------------------------------------
@@ -143,19 +143,19 @@ create-env-api:
 	fi
 
 # ------------------------------------------------------------------------------------------
-# 📝 Criar .env do Telegram Bot se não existir
+# 📝 Criar .env do Polaris Integrations se não existir
 # ------------------------------------------------------------------------------------------
-.PHONY: create-env-bot
-create-env-bot:
-	@echo "📝 Verificando .env do Telegram Bot..."
-	@if [ ! -f telegram_bot/.env ]; then \
+.PHONY: create-env-integrations
+create-env-integrations:
+	@echo "📝 Verificando .env do Polaris Integrations..."
+	@if [ ! -f polaris_integrations/.env ]; then \
 		echo "⚠️  .env do Bot não encontrado! Criando um novo..."; \
-		touch telegram_bot/.env; \
-		echo "TELEGRAM_TOKEN=\"0000000000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"" >> telegram_bot/.env; \
-		echo "POLARIS_API_URL=\"http://192.168.2.48:8000/inference/\"" >> telegram_bot/.env; \
-		echo "✅ .env do Telegram Bot criado! Edite-o para ajustar os valores."; \
+		touch polaris_integrations/.env; \
+		echo "TELEGRAM_TOKEN=\"0000000000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"" >> polaris_integrations/.env; \
+		echo "POLARIS_API_URL=\"http://192.168.2.48:8000/inference/\"" >> polaris_integrations/.env; \
+		echo "✅ .env do Polaris Integrations criado! Edite-o para ajustar os valores."; \
 	else \
-		echo "✅ .env do Telegram Bot já existe!"; \
+		echo "✅ .env do Polaris Integrations já existe!"; \
 	fi
 
 
@@ -167,13 +167,13 @@ create-env-bot:
 .PHONY: setup-ngrok
 setup-ngrok:
 	@echo "🌐 Exportando variáveis e iniciando Ngrok..."
-	@if [ -f telegram_bot/.env ]; then \
-		export TELEGRAM_BOT_PORT=8000; \
-		export TELEGRAM_TOKEN=$$(grep "^TELEGRAM_TOKEN" telegram_bot/.env | cut -d '=' -f2); \
+	@if [ -f polaris_integrations/.env ]; then \
+		export polaris_integrations_PORT=8000; \
+		export TELEGRAM_TOKEN=$$(grep "^TELEGRAM_TOKEN" polaris_integrations/.env | cut -d '=' -f2); \
 		bash polaris_setup/scripts/setup_ngrok.sh; \
 		echo "✅ Ngrok e Webhook configurados!"; \
 	else \
-		echo "⚠️ .env do Telegram Bot não encontrado! Certifique-se de rodar 'make create-env-bot' primeiro."; \
+		echo "⚠️ .env do Polaris Integrations não encontrado! Certifique-se de rodar 'make create-env-bot' primeiro."; \
 		exit 1; \
 	fi
 
@@ -222,4 +222,4 @@ restart-all:
 	make stop-all
 	sleep 2
 	make start-all
-	@echo "✅ API e Telegram Bot reiniciados!"
+	@echo "✅ API e Polaris Integrations reiniciados!"
