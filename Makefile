@@ -16,7 +16,7 @@ setup:
 	@echo "✅ Setup inicial concluído!"
 
 # ------------------------------------------------------------------------------------------
-# 📦 Instalar dependências do projeto
+# 📦 Instalar dependências do projeto.
 # ------------------------------------------------------------------------------------------
 .PHONY: install
 install:
