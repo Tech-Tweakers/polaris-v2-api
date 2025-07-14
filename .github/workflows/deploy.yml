@@ -37,6 +37,10 @@ jobs:
           version_format: "${major}.${minor}.${patch}"
           debug: true
 
+          # 🔧 Acrescentados abaixo
+          bump_each_commit: true               # garante versão mesmo com --allow-empty
+          search_commit_body: true             # permite BREAKING CHANGE no corpo do commit
+
       - name: 📌 Criar tag da versão
         run: |
           NEW_VERSION="v${{ steps.semantic_version.outputs.version }}"
