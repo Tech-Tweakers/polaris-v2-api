@@ -16,7 +16,7 @@ from pymongo import MongoClient
 import uvicorn
 import os
 from colorama import Fore, Style, init
-from polaris_logger import log_info, log_success, log_warning, log_error
+from polaris_api.polaris_logger import log_info, log_success, log_warning, log_error
 from prometheus_client import (
     CollectorRegistry,
     Gauge,
