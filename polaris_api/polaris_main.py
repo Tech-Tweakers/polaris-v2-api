@@ -16,7 +16,7 @@ from pymongo import MongoClient
 import uvicorn
 import os
 from colorama import Fore, Style, init
-from polaris_api.polaris_logger import log_info, log_success, log_warning, log_error
+from polaris_logger import log_info, log_success, log_warning, log_error
 from prometheus_client import (
     CollectorRegistry,
     Gauge,
@@ -33,7 +33,7 @@ LOGO = f"""
        {STAR_COLOR}*{Style.RESET_ALL}        .       *    .  
     .      *       .        .
        {STAR_COLOR}*{Style.RESET_ALL}    .       .        *    .
-  .        .  {TEXT_COLOR}POLARIS AI v2.1{Style.RESET_ALL}        .
+  .        .  {TEXT_COLOR}POLARIS AI v3.0 {Style.RESET_ALL}        .
        {STAR_COLOR}*{Style.RESET_ALL}        .        *     .  
     .       *        .        .
  {STAR_COLOR}*{Style.RESET_ALL}      .     *      .     
