@@ -4,30 +4,38 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 
-from polaris_integrations.main import api  # Certo!
-
-client = TestClient(api)
-
 
 @pytest.fixture(autouse=True)
 def setup_env(monkeypatch):
     monkeypatch.setenv("POLARIS_API_URL", "http://fake-polaris-api/inference/")
     monkeypatch.setenv("PUBLIC_URL", "http://localhost:8010")
+    monkeypatch.setenv("COQUI_TOS_AGREED", "1")
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key")  # só pra evitar erro por ausência
+
     os.makedirs("audios", exist_ok=True)
     yield
     for f in os.listdir("audios"):
         os.remove(os.path.join("audios", f))
 
 
+@pytest.fixture(scope="module", autouse=True)
+def mock_model_classes():
+    with patch("polaris_integrations.main.WhisperModel") as mock_whisper, \
+         patch("polaris_integrations.main.TTS") as mock_tts:
+
+        # Mock dos construtores
+        mock_whisper.return_value.transcribe.return_value = ([MagicMock(text="olá mundo")], None)
+        mock_tts.return_value = MagicMock()
+
+        yield  # os testes rodam aqui dentro
+
+
 @patch("polaris_integrations.main.subprocess.run")
 @patch("polaris_integrations.main.gerar_audio")
 @patch("polaris_integrations.main.requests.post")
-@patch("polaris_integrations.main.whisper.transcribe")
-def test_audio_inference_sucesso(
-    mock_transcribe, mock_post, mock_gerar_audio, mock_run
-):
-    # Mock Whisper
-    mock_transcribe.return_value = ([MagicMock(text="olá mundo")], None)
+def test_audio_inference_sucesso(mock_post, mock_gerar_audio, mock_run):
+    from polaris_integrations.main import api  # Import agora com tudo mockado
+    client = TestClient(api)
 
     # Mock resposta da Polaris
     mock_post.return_value.json.return_value = {"resposta": "Oi, tudo bem!"}
@@ -42,7 +50,6 @@ def test_audio_inference_sucesso(
 
     assert response.status_code == 200
     data = response.json()
-    assert "resposta" in data
     assert data["resposta"] == "Oi, tudo bem!"
     assert "tts_audio_url" in data
     assert "user_audio_url" in data
@@ -50,6 +57,9 @@ def test_audio_inference_sucesso(
 
 @patch("polaris_integrations.main.whisper.transcribe", side_effect=RuntimeError("Falha no Whisper"))
 def test_audio_inference_whisper_erro(mock_transcribe):
+    from polaris_integrations.main import api
+    client = TestClient(api)
+
     audio_content = b"audio corrompido"
     files = {
         "audio": ("erro.webm", io.BytesIO(audio_content), "audio/webm"),
