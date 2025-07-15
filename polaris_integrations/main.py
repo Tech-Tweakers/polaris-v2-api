@@ -28,7 +28,7 @@ from fastapi import FastAPI, UploadFile, Form
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from tts_router import gerar_audio
+from polaris_integrations.tts_router import gerar_audio
 from prometheus_client import (
     CollectorRegistry,
     Gauge,

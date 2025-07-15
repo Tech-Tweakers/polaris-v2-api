@@ -9,4 +9,8 @@ langchain-community
 sentence-transformers
 colorama
 pymupdf
-
+prometheus-client
+python-dotenv
+llama-cpp-python
+ninja
+python-multipart

@@ -1,7 +1,7 @@
 import os
-from tts_engines.eleven import tts_eleven
-from tts_engines.coqui import tts_coqui
-from tts_engines.groq import tts_groq
+from polaris_integrations.tts_engines.eleven import tts_eleven
+from polaris_integrations.tts_engines.coqui import tts_coqui
+from polaris_integrations.tts_engines.groq import tts_groq
 
 
 def gerar_audio(texto: str, path: str) -> str:

@@ -2,7 +2,7 @@ import os
 import time
 from fastapi import HTTPException
 from llama_cpp import Llama
-from polaris_logger import log_info, log_success, log_error
+from polaris_api.polaris_logger import log_info, log_success, log_error
 from dotenv import load_dotenv
 
 load_dotenv()
