@@ -1,7 +1,8 @@
 import time
 import logging
+import requests
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import UploadFile, File, Form
 from contextlib import asynccontextmanager
@@ -16,7 +17,7 @@ from pymongo import MongoClient
 import uvicorn
 import os
 from colorama import Fore, Style, init
-from polaris_logger import log_info, log_success, log_warning, log_error
+from polaris_api.polaris_logger import log_info, log_success, log_warning, log_error
 from prometheus_client import (
     CollectorRegistry,
     Gauge,
@@ -40,6 +41,10 @@ LOGO = f"""
      .     .        .    *    
 """
 print(LOGO)
+
+# Mapa temporário em memória para respostas pendentes por sessão
+resposta_pendente_por_sessao = {}
+
 
 registry = CollectorRegistry()
 
@@ -107,7 +112,14 @@ log_info("Configurando memória do LangChain...")
 embedder = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embedder)
 
-from llm_loader import load_llm
+def injetar_session_id(texto: str, session_id: str) -> str:
+    """Garante que o texto contenha o identificador de sessão visível."""
+    if f"[session_id=" in texto:
+        return texto
+    return f"[session_id={session_id}]\n{texto.strip()}"
+
+
+from polaris_api.llm_loader import load_llm
 
 llm = load_llm()
 
@@ -345,7 +357,7 @@ from langchain.schema import HumanMessage, AIMessage
 @app.post("/inference/")
 async def inference(request: InferenceRequest):
     session_id = request.session_id
-    user_prompt = request.prompt
+    user_prompt = injetar_session_id(request.prompt, session_id)
     log_info(
         f"📥 Nova solicitação de inferência para sessão {session_id}: {user_prompt}"
     )
@@ -403,7 +415,33 @@ async def inference(request: InferenceRequest):
 
     try:
         resposta = llm.invoke(full_prompt)
+        if "shellPolaris" in resposta:
+            # ⚡ Salvar como novo prompt no Chroma com session_id
+            comando = injetar_session_id(resposta, session_id)
+            vectorstore.add_texts(
+                texts=[comando],
+                metadatas=[{"session_id": session_id}]
+            )
+
+            log_info("🧠 Polaris em modo executivo — aguardando retorno do comando.")
+
+            # 💤 Retorna uma resposta provisória ao usuário
+            return {
+                "resposta": "Estou verificando as informações solicitadas. Um momento... 🧠"
+            }
+
         await save_to_langchain_memory(user_prompt, resposta, session_id)
+
+        try:
+            resposta_com_id = injetar_session_id(resposta, session_id)
+            vectorstore.add_texts(
+                texts=[resposta_com_id],
+                metadatas=[{"session_id": session_id}]
+            )
+            log_success(f"🧠 Resposta registrada no ChromaDB para sessão {session_id}.")
+        except Exception as e:
+            log_error(f"Erro ao salvar resposta no ChromaDB: {e}")
+
     except Exception as e:
         erro = True
         inference_failures.labels(session_id=session_id).inc()
@@ -427,6 +465,78 @@ async def inference(request: InferenceRequest):
     return {"resposta": resposta}
 
 
+from pydantic import BaseModel
+
+class CommandResponse(BaseModel):
+    session_id: str
+    resposta: str
+
+@app.post("/inference/response/")
+async def receive_executor_response(response: CommandResponse, background_tasks: BackgroundTasks):
+    session_id = response.session_id
+    resposta = injetar_session_id(response.resposta, session_id)
+
+    try:
+        # Armazena em memória temporária
+        resposta_pendente_por_sessao[session_id] = resposta
+
+        # Salva normalmente
+        save_to_mongo(resposta, session_id)
+        vectorstore.add_texts(
+            texts=[resposta],
+            metadatas=[{"session_id": session_id}]
+        )
+
+        log_success(f"📥 Resposta do executor salva para sessão {session_id}.")
+
+        # 🧠 Dispara nova inferência em segundo plano
+        background_tasks.add_task(disparar_nova_inferencia, session_id, resposta)
+
+        return {"message": "Resposta armazenada com sucesso."}
+
+    except Exception as e:
+        log_error(f"Erro ao salvar resposta do executor: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao processar resposta")
+
+
+def disparar_nova_inferencia(session_id: str, resposta: str):
+    try:
+        log_info(f"🧠 Polaris vai interpretar o resultado do comando da sessão {session_id}...")
+
+        prompt = (
+            f"Acabei de executar um comando bash e obtive o seguinte resultado:\n\n"
+            f"{resposta}\n\n"
+            f"Explique isso de forma compreensível para o usuário. "
+            f"Se necessário, sugira comandos adicionais ou traduza os dados para linguagem humana."
+        )
+
+        payload = {
+            "session_id": session_id,
+            "prompt": prompt
+        }
+
+        response = requests.post("http://localhost:8000/inference/", json=payload, timeout=30)
+
+        if response.status_code == 200:
+            interpretacao = response.json().get("resposta")
+            resposta_pendente_por_sessao[session_id] = interpretacao  # 🔥 salva para o front buscar!
+            log_success(f"🧠 Polaris interpretou o comando da sessão {session_id}.")
+        else:
+            log_error(f"⚠️ Falha ao invocar nova inferência: {response.status_code}")
+
+    except Exception as e:
+        log_error(f"❌ Erro ao invocar nova inferência: {e}")
+
+
+@app.get("/inference/pending-response/{session_id}")
+async def get_pending_response(session_id: str):
+    resposta = resposta_pendente_por_sessao.pop(session_id, None)
+    if resposta:
+        log_info(f"🔁 Polaris devolveu resposta pendente para sessão {session_id}.")
+        return {"resposta": resposta}
+    return {"resposta": None}
+
+
 @app.post("/upload-pdf/")
 async def upload_pdf(
     file: UploadFile = File(...), session_id: str = Form("default_session")
@@ -447,8 +557,10 @@ async def upload_pdf(
         log_info(f"📖 {len(documents)} documentos carregados do PDF.")
 
         for doc in documents:
+            texto_pdf = injetar_session_id(doc.page_content, session_id)
             vectorstore.add_texts(
-                texts=[doc.page_content], metadatas=[{"session_id": session_id}]
+                texts=[texto_pdf],
+                metadatas=[{"session_id": session_id}]
             )
 
         log_success(
