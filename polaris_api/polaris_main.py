@@ -13,6 +13,7 @@ from langchain_chroma import Chroma
 from langchain.memory import ConversationBufferMemory
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.document_loaders import PyMuPDFLoader
 from pymongo import MongoClient
 import uvicorn
 import os
@@ -551,8 +552,6 @@ async def upload_pdf(
             f.write(await file.read())
 
         log_info(f"📂 PDF recebido para sessão {session_id}: {temp_pdf_path}")
-
-        from langchain_community.document_loaders import PyMuPDFLoader
 
         loader = PyMuPDFLoader(temp_pdf_path)
         documents = loader.load()

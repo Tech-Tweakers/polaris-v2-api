@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 
-from polaris_integrations.main import api  # ou o nome real do módulo com o FastAPI
+from polaris_integrations.main import api  # Certo!
 
 client = TestClient(api)
 
@@ -19,12 +19,12 @@ def setup_env(monkeypatch):
         os.remove(os.path.join("audios", f))
 
 
-@patch("polaris_integrations.whisper.transcribe")
-@patch("polaris_integrations.requests.post")
-@patch("polaris_integrations.gerar_audio")
-@patch("polaris_integrations.subprocess.run")
+@patch("polaris_integrations.main.subprocess.run")
+@patch("polaris_integrations.main.gerar_audio")
+@patch("polaris_integrations.main.requests.post")
+@patch("polaris_integrations.main.whisper.transcribe")
 def test_audio_inference_sucesso(
-    mock_run, mock_gerar_audio, mock_post, mock_transcribe
+    mock_transcribe, mock_post, mock_gerar_audio, mock_run
 ):
     # Mock Whisper
     mock_transcribe.return_value = ([MagicMock(text="olá mundo")], None)
@@ -48,11 +48,8 @@ def test_audio_inference_sucesso(
     assert "user_audio_url" in data
 
 
-@patch(
-    "polaris_integrations.whisper.transcribe",
-    side_effect=RuntimeError("Falha no Whisper"),
-)
-def test_audio_inference_whisper_erro():
+@patch("polaris_integrations.main.whisper.transcribe", side_effect=RuntimeError("Falha no Whisper"))
+def test_audio_inference_whisper_erro(mock_transcribe):
     audio_content = b"audio corrompido"
     files = {
         "audio": ("erro.webm", io.BytesIO(audio_content), "audio/webm"),
