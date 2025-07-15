@@ -1,7 +1,7 @@
 python-telegram-bot==20.8
 huggingface-hub==0.23.0
-transformers==4.41.0
-tokenizers==0.19.1
+transformers==4.37.2  # última versão compatível com tokenizers <0.16
+tokenizers==0.15.1
 faster-whisper==0.10.0
 TTS==0.22.0
 httpx==0.26.0
