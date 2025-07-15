@@ -37,7 +37,8 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r polaris_api/requirements.txt
-          pip install black pytest python-multipart pytest-asyncio
+          pip install black pytest python-multipart pytest-asyncio httpx>=0.23.0
+
 
       - name: 🎨 Rodar Linter
         run: black --check polaris_api
@@ -69,7 +70,8 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r polaris_integrations/requirements.txt
-          pip install black pytest requests_mock
+          pip install black pytest requests_mock httpx>=0.23.0
+
 
       - name: 🎨 Rodar Linter
         run: black --check polaris_integrations
