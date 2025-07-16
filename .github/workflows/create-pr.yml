@@ -1,0 +1,32 @@
+name: 🔀 Criar PR para Main
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-pr:
+    name: 🔀 Criar Pull Request
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout do código
+        uses: actions/checkout@v4
+
+      - name: 🔀 Criar Pull Request para `main`
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GH_PAT }}
+          base: main
+          branch: ${{ github.ref }}
+          title: "🚀 Merge automático de ${{ github.ref_name }} para main"
+          body: |
+            **Descrição:**
+            Este PR foi criado automaticamente a partir da branch `${{ github.ref_name }}`.
+            Verifique os testes antes de aprovar o merge.
+          labels: |
+            automated-pr
