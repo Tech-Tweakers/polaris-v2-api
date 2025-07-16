@@ -6,6 +6,7 @@ import requests
 import subprocess
 import threading
 import time
+import logging
 
 from faster_whisper import WhisperModel
 from dotenv import load_dotenv
@@ -40,6 +41,7 @@ from prometheus_client import (
 )
 from fastapi.responses import Response
 
+log_error = logging.error
 
 # Segurança de unpickling
 add_safe_globals([XttsConfig, XttsAudioConfig, BaseDatasetConfig, XttsArgs])
