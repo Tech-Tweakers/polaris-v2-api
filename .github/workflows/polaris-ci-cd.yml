@@ -38,8 +38,7 @@ jobs:
           echo "COQUI_TOS_AGREED=1" >> $GITHUB_ENV
           pip install --upgrade pip
           pip install -r polaris_api/requirements.txt
-          pip install black pytest python-multipart pytest-asyncio httpx>=0.23.0
-
+          pip install black pytest python-multipart pytest-asyncio "httpx>=0.23.0"
 
       - name: 🎨 Rodar Linter
         run: black --check polaris_api
@@ -72,7 +71,8 @@ jobs:
           echo "COQUI_TOS_AGREED=1" >> $GITHUB_ENV
           pip install --upgrade pip
           pip install -r polaris_integrations/requirements.txt
-          pip install black pytest requests_mock httpx>=0.23.0
+          pip install black pytest python-multipart pytest-asyncio "httpx>=0.23.0"
+
 
 
       - name: 🎨 Rodar Linter

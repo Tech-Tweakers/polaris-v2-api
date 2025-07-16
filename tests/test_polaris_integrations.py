@@ -10,7 +10,7 @@ def setup_env(monkeypatch):
     monkeypatch.setenv("POLARIS_API_URL", "http://fake-polaris-api/inference/")
     monkeypatch.setenv("PUBLIC_URL", "http://localhost:8010")
     monkeypatch.setenv("COQUI_TOS_AGREED", "1")
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key")  # só pra evitar erro por ausência
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key")  # evita erro de falta de chave
 
     os.makedirs("audios", exist_ok=True)
     yield
@@ -21,11 +21,17 @@ def setup_env(monkeypatch):
 @pytest.fixture(scope="module", autouse=True)
 def mock_model_classes():
     with patch("polaris_integrations.main.WhisperModel") as mock_whisper, \
-         patch("polaris_integrations.main.TTS") as mock_tts:
+         patch("polaris_integrations.main.TTS") as mock_tts, \
+         patch("polaris_integrations.main.GroqLLM") as mock_groq:
 
-        # Mock dos construtores
+        # Mock do Whisper
         mock_whisper.return_value.transcribe.return_value = ([MagicMock(text="olá mundo")], None)
+        
+        # Mock do TTS
         mock_tts.return_value = MagicMock()
+        
+        # Mock da Groq
+        mock_groq.return_value.invoke.return_value = "resposta mockada da Groq"
 
         yield  # os testes rodam aqui dentro
 
@@ -34,10 +40,10 @@ def mock_model_classes():
 @patch("polaris_integrations.main.gerar_audio")
 @patch("polaris_integrations.main.requests.post")
 def test_audio_inference_sucesso(mock_post, mock_gerar_audio, mock_run):
-    from polaris_integrations.main import api  # Import agora com tudo mockado
+    from polaris_integrations.main import api
     client = TestClient(api)
 
-    # Mock resposta da Polaris
+    # Mock da resposta da Polaris
     mock_post.return_value.json.return_value = {"resposta": "Oi, tudo bem!"}
 
     audio_content = b"simulacao de audio"
