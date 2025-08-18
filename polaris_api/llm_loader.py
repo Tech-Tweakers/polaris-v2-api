@@ -1,6 +1,6 @@
 import os
-from polaris_api.llm_local import LlamaRunnable
-from polaris_api.llm_groq import GroqLLM
+from llm_local import LlamaRunnable
+from llm_groq import GroqLLM
 from dotenv import load_dotenv
 
 load_dotenv()

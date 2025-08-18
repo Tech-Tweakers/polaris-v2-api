@@ -1,4 +1,4 @@
-# 🌟 Polaris AI v3 – Advanced Multi-Modal AI Assistant
+# 🌟 Polaris AI v2 – Advanced Multi-Modal AI Assistant
 
 <div align="center">
 
@@ -52,7 +52,7 @@
 
 ### 🚀 High-Performance Inference
 - Local model support via `llama.cpp`  
-- Remote inference with Groq API (LLaMA 3 70B)  
+- Remote inference with Groq API (LLaMA 3 70B or any other model available)  
 - Configurable inference parameters  
 - Optimized for multi-core systems
 
@@ -88,11 +88,9 @@ polaris-v3/
 │   ├── requirements.txt        # 📦 Integration dependencies
 │   └── .env                    # 🔐 Integration environment config
 ├── 🐳 polaris_setup/        # Infra, benchmarking, and OS prep
-│   ├── data-flush.yml          # 🛠️ Clean UP Memory Script
+│   ├── data-flush.py           # 🛠️ Clean UP Memory Script
 │   ├── mongodb-compose.yml     # 🗄️ MongoDB container orchestration
-│   ├── polaris-os-tunner.sh    # 🛠️ System tuning script (Debian/Ubuntu)
-│   ├── polaris-real-tests.py   # 🧪 Realistic conversational stress test
-│   └── polaris-stress-tests.py # 📈 Multi-session synthetic load tester
+│   └── polaris-os-tunner.sh    # 🛠️ System tuning script (Debian/Ubuntu)
 ├── 📖 local-setup.sh           # 🚀 Interactive one-command setup script
 └── 🧪 Makefile                 # 🛠️ Dev workflow commands and automation
 ```
@@ -103,14 +101,14 @@ polaris-v3/
 
 - Python 3.10+  
 - Docker & Docker Compose  
-- 16GB+ RAM (for local inference)  
+- 8GB+ RAM (for local inference)  
 - NVIDIA GPU (opcional)
 
 ### 🎯 One-Command Setup
 
 ```bash
-git clone https://github.com/Tech-Tweakers/polaris-v3.git
-cd polaris-v3
+git clone https://github.com/Tech-Tweakers/polaris-v2-api.git
+cd polaris-v2-api
 ./local-setup.sh
 ```
 
@@ -166,41 +164,44 @@ make start-all
 
 ```env
 # Model settings
-USE_LOCAL_LLM=False
-
-MODEL_PATH="../models/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf"
+# Local LLM Setup
+MODEL_PATH="../path/to/awesome/model"
 NUM_CORES=16
 MODEL_CONTEXT_SIZE=4096
-MODEL_BATCH_SIZE=1
+MODEL_BATCH_SIZE=8
 
-# Configuração de histórico
-MONGODB_HISTORY=10
-LANGCHAIN_HISTORY=20
+# Context History Cache
+MONGODB_HISTORY=4
+LANGCHAIN_HISTORY=10
 
-# Hiperparâmetros do modelo
+# LLM Model Hiperparameters
 TEMPERATURE=0.3
 TOP_P=0.7
 TOP_K=70
 FREQUENCY_PENALTY=3
 
-# Configuração do MongoDB
-MONGO_URI="mongodb://admin:admin123@localhost:27017/polaris_db?authSource=admin"
-HF_TOKEN="hf_your-api-key"
-GROQ_API_KEY="gsk_your-api-key"
+# Conections
+USE_MONGODB=true
+MONGO_URI="mongodb://root:examplepassword@10.10.10.30:27017/polaris_db?authSource=admin"
+HF_TOKEN="hf_yourhuggingfaceapikey" # necessary for sentenceTransformer
+GROQ_API_KEY="gsk_yourgroqapikey"
+
+# Export Default Metrics 
+USE_PUSHGATEWAY=false
 ```
 
 ### `.env` – Polaris Integrations
 
 ```env
-TELEGRAM_TOKEN="098098098:your-telegram-bot-token"
+TELEGRAM_TOKEN=""
 POLARIS_API_URL="http://192.168.1.104:8000/inference/"
-HF_TOKEN="hf_your-huggingface-api-key"
+HF_TOKEN=""
 COQUI_SPEAKER_WAV="polaris-voice.wav"
-PUBLIC_URL="https://suitable-actually-kw-rescue.trycloudflare.com"
+PUBLIC_URL=""
 
-TTS_ENGINE="eleven"  # or coqui or groq
+TTS_ENGINE="coqui"  # eleven / coqui(local) / groq
 
-ELEVEN_API_KEY="sk_your-eleven-labs-api-key"
+ELEVEN_API_KEY=""
 ELEVEN_VOICE_ID="yM93hbw8Qtvdma2wCnJG"
 ELEVEN_MODEL_ID="eleven_multilingual_v2"
 

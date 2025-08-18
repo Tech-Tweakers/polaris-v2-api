@@ -43,16 +43,16 @@ from fastapi.responses import Response
 
 log_error = logging.error
 
-# Segurança de unpickling
 add_safe_globals([XttsConfig, XttsAudioConfig, BaseDatasetConfig, XttsArgs])
 load_dotenv()
 
-# Variáveis de ambiente
 COQUI_SPEAKER_WAV = os.getenv("COQUI_SPEAKER_WAV", "polaris-voice.wav")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 POLARIS_API_URL = os.getenv("POLARIS_API_URL", "http://192.168.1.104:8000/inference/")
 
-# Logs
+USE_PUSHGATEWAY = os.getenv("USE_PUSHGATEWAY", "false").lower() == "false"
+PUSHGATEWAY_URL = os.getenv("PUSHGATEWAY_URL", "http://10.10.10.20:9091")
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
@@ -79,7 +79,6 @@ integration_duration = Summary(
     registry=registry,
 )
 
-# Inicialização dos modelos
 log.info("🧠 Carregando modelo Whisper...")
 whisper = WhisperModel("small", compute_type="int8")
 
@@ -100,7 +99,6 @@ else:
 os.makedirs("audios", exist_ok=True)
 
 
-# Utilitários de TTS
 def limpar_texto(texto: str) -> str:
     return (
         texto.replace("...", ".")
@@ -111,7 +109,6 @@ def limpar_texto(texto: str) -> str:
     )
 
 
-# Handlers Telegram
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 Olá! Me mande texto, áudio ou PDF que eu te respondo!"
@@ -195,7 +192,6 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Erro ao processar PDF.")
 
 
-# FastAPI Microserviço Local (para o frontend)
 api = FastAPI()
 api.add_middleware(
     CORSMiddleware,
@@ -253,15 +249,18 @@ async def audio_inference(audio: UploadFile, session_id: str = Form(...)):
         integration_duration.labels(endpoint=endpoint, session_id=session_id).observe(
             elapsed
         )
-        try:
-            push_to_gateway(
-                "http://10.10.10.20:9091",  # ajuste conforme seu pushgateway real
-                job="polaris-integrations",
-                registry=registry,
-            )
-            log.info("📊 Métricas da integração enviadas com sucesso!")
-        except Exception as push_error:
-            log.warning(f"⚠️ Falha ao enviar métricas: {push_error}")
+        if USE_PUSHGATEWAY:
+            try:
+                push_to_gateway(
+                    PUSHGATEWAY_URL,
+                    job="polaris-integrations",
+                    registry=registry,
+                )
+                log.info("📊 Métricas da integração enviadas com sucesso!")
+            except Exception as push_error:
+                log.warning(f"⚠️ Falha ao enviar métricas: {push_error}")
+        else:
+            log.info("📉 Envio de métricas desativado por configuração.")
 
 
 from fastapi.responses import Response

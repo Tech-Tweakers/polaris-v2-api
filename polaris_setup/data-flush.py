@@ -3,13 +3,11 @@ import shutil
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
-# Carrega variáveis
 load_dotenv(dotenv_path="../polaris_api/.env")
 
 MONGO_URI = os.getenv("MONGO_URI")
 CHROMA_DB_PATH = "../polaris_api/chroma_db"
 
-# Conecta ao MongoDB
 client = MongoClient(MONGO_URI)
 db = client["polaris_db"]
 collection = db["user_memory"]

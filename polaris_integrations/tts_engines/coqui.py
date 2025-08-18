@@ -8,7 +8,6 @@ from TTS.tts.models.xtts import XttsAudioConfig
 from TTS.tts.models.xtts import XttsArgs
 from TTS.config.shared_configs import BaseDatasetConfig
 
-# 👇 esta linha é essencial:
 add_safe_globals([XttsConfig, XttsAudioConfig, BaseDatasetConfig, XttsArgs])
 
 COQUI_SPEAKER_WAV = os.getenv("COQUI_SPEAKER_WAV", "polaris-voice.wav")

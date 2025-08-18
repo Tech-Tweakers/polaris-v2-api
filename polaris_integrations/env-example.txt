@@ -4,8 +4,12 @@ HF_TOKEN=""
 COQUI_SPEAKER_WAV="polaris-voice.wav"
 PUBLIC_URL=""
 
-TTS_ENGINE="eleven"  # ou coqui
+TTS_ENGINE="coqui"  # eleven / coqui(local) / groq
 
 ELEVEN_API_KEY=""
 ELEVEN_VOICE_ID="yM93hbw8Qtvdma2wCnJG"
 ELEVEN_MODEL_ID="eleven_multilingual_v2"
+
+USE_PUSHGATEWAY=true
+PUSHGATEWAY_URL=http://10.10.10.20:9091
+

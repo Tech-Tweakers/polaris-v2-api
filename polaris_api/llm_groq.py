@@ -1,6 +1,6 @@
 import os
 import requests
-from polaris_api.polaris_logger import log_info, log_success, log_warning, log_error
+from polaris_logger import log_info, log_success, log_warning, log_error
 
 
 class GroqLLM:

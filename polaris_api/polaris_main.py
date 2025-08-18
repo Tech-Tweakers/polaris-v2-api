@@ -13,12 +13,11 @@ from langchain_chroma import Chroma
 from langchain.memory import ConversationBufferMemory
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.document_loaders import PyMuPDFLoader
 from pymongo import MongoClient
 import uvicorn
 import os
 from colorama import Fore, Style, init
-from polaris_api.polaris_logger import log_info, log_success, log_warning, log_error
+from polaris_logger import log_info, log_success, log_warning, log_error
 from prometheus_client import (
     CollectorRegistry,
     Gauge,
@@ -35,10 +34,10 @@ LOGO = f"""
        {STAR_COLOR}*{Style.RESET_ALL}        .       *    .  
     .      *       .        .
        {STAR_COLOR}*{Style.RESET_ALL}    .       .        *    .
-  .        .  {TEXT_COLOR}POLARIS AI v3.0 {Style.RESET_ALL}        .
-       {STAR_COLOR}*{Style.RESET_ALL}        .        *     .  
+  .        .  {TEXT_COLOR}POLARIS AI v2.0 {Style.RESET_ALL}        .
+       {STAR_COLOR}.{Style.RESET_ALL}        .        *     .  
     .       *        .        .
- {STAR_COLOR}*{Style.RESET_ALL}      .     *      .     
+ {STAR_COLOR}*{Style.RESET_ALL}      .     .      .     
      .     .        .    *    
 """
 print(LOGO)
@@ -103,9 +102,24 @@ SEED = int(os.getenv("SEED", 42))
 
 MONGO_URI = os.getenv("MONGO_URI")
 
-client = MongoClient(MONGO_URI)
-db = client["polaris_db"]
-collection = db["user_memory"]
+USE_MONGODB = os.getenv("USE_MONGODB", "false").lower() == "true"
+
+USE_PUSHGATEWAY = os.getenv("USE_PUSHGATEWAY", "false").lower() == "true"
+PUSHGATEWAY_URL = os.getenv("PUSHGATEWAY_URL", "http://10.10.10.20:9091")
+
+
+if USE_MONGODB:
+    try:
+        client = MongoClient(MONGO_URI)
+        db = client["polaris_db"]
+        collection = db["user_memory"]
+        log_success("🔌 Conectado ao MongoDB com sucesso.")
+    except Exception as e:
+        log_error(f"❌ Erro ao conectar ao MongoDB: {str(e)}")
+        USE_MONGODB = False
+else:
+    log_warning("⛔ Uso do MongoDB desativado por configuração.")
+
 memory_store = {}
 
 log_info("Configurando memória do LangChain...")
@@ -121,7 +135,7 @@ def injetar_session_id(texto: str, session_id: str) -> str:
     return f"[session_id={session_id}]\n{texto.strip()}"
 
 
-from polaris_api.llm_loader import load_llm
+from llm_loader import load_llm
 
 llm = load_llm()
 
@@ -157,16 +171,22 @@ class InferenceRequest(BaseModel):
 
 
 def get_memories(session_id):
-    memories = (
-        collection.find({"session_id": session_id})
-        .sort("timestamp", -1)
-        .limit(MONGODB_HISTORY)
-    )
-    texts = [mem["text"] for mem in memories]
-    log_info(
-        f"📌 Recuperadas {len(texts)} memórias do MongoDB para sessão {session_id}."
-    )
-    return texts
+    if not USE_MONGODB:
+        return []
+    try:
+        memories = (
+            collection.find({"session_id": session_id})
+            .sort("timestamp", -1)
+            .limit(MONGODB_HISTORY)
+        )
+        texts = [mem["text"] for mem in memories]
+        log_info(
+            f"📌 Recuperadas {len(texts)} memórias do MongoDB para sessão {session_id}."
+        )
+        return texts
+    except Exception as e:
+        log_error(f"Erro ao buscar memórias no MongoDB: {str(e)}")
+        return []
 
 
 def get_recent_memories(session_id):
@@ -224,6 +244,8 @@ async def save_to_langchain_memory(user_input, response, session_id):
 
 
 def save_to_mongo(user_input, session_id):
+    if not USE_MONGODB:
+        return
     try:
         existing_entry = collection.find_one(
             {"text": user_input, "session_id": session_id}
@@ -426,7 +448,6 @@ async def inference(request: InferenceRequest):
 
             log_info("🧠 Polaris em modo executivo — aguardando retorno do comando.")
 
-            # 💤 Retorna uma resposta provisória ao usuário
             return {
                 "resposta": "Estou verificando as informações solicitadas. Um momento... 🧠"
             }
@@ -448,19 +469,18 @@ async def inference(request: InferenceRequest):
         log_error(f"Erro ao gerar resposta: {e}")
         raise HTTPException(status_code=500, detail="Erro na inferência")
 
-    finally:
-        elapsed = time.time() - start_time
-        inference_duration.labels(session_id=session_id).observe(elapsed)
-
+    if USE_PUSHGATEWAY:
         try:
             push_to_gateway(
-                "http://10.10.10.20:9091",  # ajuste pro IP real do Pushgateway
+                PUSHGATEWAY_URL,
                 job="polaris-api",
                 registry=registry,
             )
             log_success("📊 Métricas enviadas ao Pushgateway com sucesso!")
         except Exception as push_error:
-            log_warning(f"Falha ao enviar métricas para o Pushgateway: {push_error}")
+            log_warning(f"⚠️ Falha ao enviar métricas para o Pushgateway: {push_error}")
+    else:
+        log_info("📉 Envio de métricas ao Pushgateway desativado por configuração.")
 
     return {"resposta": resposta}
 
@@ -471,74 +491,6 @@ from pydantic import BaseModel
 class CommandResponse(BaseModel):
     session_id: str
     resposta: str
-
-
-@app.post("/inference/response/")
-async def receive_executor_response(
-    response: CommandResponse, background_tasks: BackgroundTasks
-):
-    session_id = response.session_id
-    resposta = injetar_session_id(response.resposta, session_id)
-
-    try:
-        # Armazena em memória temporária
-        resposta_pendente_por_sessao[session_id] = resposta
-
-        # Salva normalmente
-        save_to_mongo(resposta, session_id)
-        vectorstore.add_texts(texts=[resposta], metadatas=[{"session_id": session_id}])
-
-        log_success(f"📥 Resposta do executor salva para sessão {session_id}.")
-
-        # 🧠 Dispara nova inferência em segundo plano
-        background_tasks.add_task(disparar_nova_inferencia, session_id, resposta)
-
-        return {"message": "Resposta armazenada com sucesso."}
-
-    except Exception as e:
-        log_error(f"Erro ao salvar resposta do executor: {e}")
-        raise HTTPException(status_code=500, detail="Erro ao processar resposta")
-
-
-def disparar_nova_inferencia(session_id: str, resposta: str):
-    try:
-        log_info(
-            f"🧠 Polaris vai interpretar o resultado do comando da sessão {session_id}..."
-        )
-
-        prompt = (
-            f"Acabei de executar um comando bash e obtive o seguinte resultado:\n\n"
-            f"{resposta}\n\n"
-            f"Explique isso de forma compreensível para o usuário. "
-            f"Se necessário, sugira comandos adicionais ou traduza os dados para linguagem humana."
-        )
-
-        payload = {"session_id": session_id, "prompt": prompt}
-
-        response = requests.post(
-            "http://localhost:8000/inference/", json=payload, timeout=30
-        )
-
-        if response.status_code == 200:
-            interpretacao = response.json().get("resposta")
-            resposta_pendente_por_sessao[session_id] = (
-                interpretacao  # 🔥 salva para o front buscar!
-            )
-            log_success(f"🧠 Polaris interpretou o comando da sessão {session_id}.")
-        else:
-            log_error(f"⚠️ Falha ao invocar nova inferência: {response.status_code}")
-
-    except Exception as e:
-        log_error(f"❌ Erro ao invocar nova inferência: {e}")
-
-
-@app.get("/inference/pending-response/{session_id}")
-async def get_pending_response(session_id: str):
-    resposta = resposta_pendente_por_sessao.pop(session_id, None)
-    if resposta:
-        log_info(f"🔁 Polaris devolveu resposta pendente para sessão {session_id}.")
-        return {"resposta": resposta}
-    return {"resposta": None}
 
 
 @app.post("/upload-pdf/")
@@ -552,6 +504,8 @@ async def upload_pdf(
             f.write(await file.read())
 
         log_info(f"📂 PDF recebido para sessão {session_id}: {temp_pdf_path}")
+
+        from langchain_community.document_loaders import PyMuPDFLoader
 
         loader = PyMuPDFLoader(temp_pdf_path)
         documents = loader.load()

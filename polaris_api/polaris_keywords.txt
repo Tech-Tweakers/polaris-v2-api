@@ -5,7 +5,7 @@ meu apelido é
 sou chamado de
 me apresento como
 as pessoas me conhecem como
-geralmente me chamam de
+geralmente sou chamado de
 pode me chamar de
 eu atendo por
 Costumam me chamar de
@@ -17,6 +17,7 @@ Posso ser apresentado como
 Prefiro que me chamem de
 No trabalho me chamam de
 Entre amigos sou conhecido como
+No meio profissional sou chamado de
 
 eu moro em
 eu vivo em
