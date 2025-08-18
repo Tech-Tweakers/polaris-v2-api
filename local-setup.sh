@@ -20,7 +20,7 @@ show_menu() {
     echo ""
 }
 
-# Loop para manter o menu rodando até o usuário sair
+## Loop para manter o menu rodando até o usuário sair
 while true; do
     show_menu
     read -r -p "Digite a opção desejada: " OPTION
