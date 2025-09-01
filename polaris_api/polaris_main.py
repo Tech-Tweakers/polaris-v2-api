@@ -16,15 +16,10 @@ from langchain_chroma import Chroma
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_huggingface import HuggingFaceEmbeddings
-from polaris_logger import (
-    log_error,
-    log_info,
-    log_request,
-    log_request_error,
-    log_success,
-    log_warning,
-)
-from prometheus_client import CollectorRegistry, Counter, Summary, push_to_gateway
+from polaris_logger import (log_error, log_info, log_request,
+                            log_request_error, log_success, log_warning)
+from prometheus_client import (CollectorRegistry, Counter, Summary,
+                               push_to_gateway)
 from pydantic import BaseModel
 from pymongo import MongoClient
 
