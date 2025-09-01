@@ -15,9 +15,7 @@ class GroqLLM:
         log_info("🛑 Encerrando conexão simbólica com o backend remoto.")
 
     def invoke(self, prompt: str) -> str:
-        client = Groq(
-            api_key=self.api_key
-        )
+        client = Groq(api_key=self.api_key)
 
         chat_completion = client.chat.completions.create(
             messages=[
@@ -27,7 +25,7 @@ class GroqLLM:
                 },
                 {"role": "user", "content": prompt},
             ],
-            model=self.model
+            model=self.model,
         )
 
         try:

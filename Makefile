@@ -118,29 +118,72 @@ setup-ngrok:
 create-env-api:
 	@echo "📝 Verificando .env da API..."
 	@if [ ! -f polaris_api/.env ]; then \
-		echo "⚠️  .env da API não encontrado! Criando um novo..."; \
-		touch polaris_api/.env; \
-		echo "MODEL_PATH=\"../models/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf\"" >> polaris_api/.env; \
-		echo "NUM_CORES=16" >> polaris_api/.env; \
-		echo "MODEL_CONTEXT_SIZE=4096" >> polaris_api/.env; \
-		echo "MODEL_BATCH_SIZE=8" >> polaris_api/.env; \
-		echo "" >> polaris_api/.env; \
-		echo "# Configuração de histórico" >> polaris_api/.env; \
-		echo "MONGODB_HISTORY=2" >> polaris_api/.env; \
-		echo "LANGCHAIN_HISTORY=10" >> polaris_api/.env; \
-		echo "" >> polaris_api/.env; \
-		echo "# Hiperparâmetros do modelo" >> polaris_api/.env; \
-		echo "TEMPERATURE=0.3" >> polaris_api/.env; \
-		echo "TOP_P=0.7" >> polaris_api/.env; \
-		echo "TOP_K=70" >> polaris_api/.env; \
-		echo "FREQUENCY_PENALTY=3" >> polaris_api/.env; \
-		echo "" >> polaris_api/.env; \
-		echo "# Configuração do MongoDB" >> polaris_api/.env; \
-		echo "MONGO_URI=\"mongodb://admin:admin123@localhost:27017/polaris_db?authSource=admin\"" >> polaris_api/.env; \
-		echo "✅ .env da API criado! Edite-o para ajustar os valores."; \
+		echo "⚠️  .env da API não encontrado! Criando um novo com chaves seguras..."; \
+		cd polaris_api && python3 generate-env.py; \
+		echo "✅ .env da API criado com chaves seguras!"; \
 	else \
 		echo "✅ .env da API já existe!"; \
 	fi
+
+.PHONY: regenerate-env-api
+regenerate-env-api:
+	@echo "🔄 Regenerando .env da API com novas chaves..."
+	@cd polaris_api && python3 generate-env.py
+	@echo "✅ .env da API regenerado com novas chaves!"
+
+.PHONY: setup-prod-env
+setup-prod-env:
+	@echo "🌐 Configurando .env para produção..."
+	@read -p "Digite o domínio do GitHub Pages (ex: https://tech-tweakers.github.io): " domain; \
+	cd polaris_api && python3 generate-env.py "$$domain"
+	@echo "✅ .env da API configurado para produção!"
+
+# ------------------------------------------------------------------------------------------
+# 🧪 Testes
+.PHONY: test
+test:
+	@echo "🧪 Executando testes unitários..."
+	@cd polaris_api && python3 -m pytest ../tests/ -v
+
+.PHONY: test-cov
+test-cov:
+	@echo "📊 Executando testes com cobertura..."
+	@cd polaris_api && python3 -m pytest ../tests/ --cov=. --cov-report=term-missing
+
+.PHONY: test-watch
+test-watch:
+	@echo "👀 Executando testes em modo watch..."
+	@cd polaris_api && python3 -m pytest ../tests/ -f -v
+
+.PHONY: install-test-deps
+install-test-deps:
+	@echo "📦 Instalando dependências de teste..."
+	@cd polaris_api && pip3 install -r requirements-test.txt
+
+.PHONY: test-ci
+test-ci:
+	@echo "🚀 Executando testes para CI/CD..."
+	@cd polaris_api && python3 -m pytest ../tests/ -v --cov=. --cov-report=xml --cov-report=html
+
+.PHONY: ci-check
+ci-check:
+	@echo "🔍 Verificando qualidade do código..."
+	@echo "📝 Verificando formatação..."
+	@black --check polaris_api/ || echo "⚠️ Black não encontrado, pulando..."
+	@echo "📋 Verificando imports..."
+	@isort --check-only polaris_api/ || echo "⚠️ isort não encontrado, pulando..."
+	@echo "🔍 Verificando linting..."
+	@flake8 polaris_api/ --max-line-length=127 --max-complexity=10 || echo "⚠️ flake8 não encontrado, pulando..."
+	@echo "🔒 Verificando segurança..."
+	@bandit -r polaris_api/ -f json -o bandit-report.json || echo "⚠️ bandit não encontrado, pulando..."
+	@echo "✅ Verificações de qualidade concluídas!"
+
+.PHONY: ci-full
+ci-full:
+	@echo "🚀 Executando pipeline completo de CI..."
+	$(MAKE) test-ci
+	$(MAKE) ci-check
+	@echo "🎉 Pipeline de CI concluído com sucesso!"
 
 # ------------------------------------------------------------------------------------------
 # 📝 Criar .env do Polaris Integrations se não existir

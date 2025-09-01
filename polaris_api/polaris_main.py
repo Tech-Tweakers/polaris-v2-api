@@ -2,13 +2,13 @@ import time
 import logging
 import requests
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import UploadFile, File, Form
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict
 from langchain_chroma import Chroma
 from langchain.memory import ConversationBufferMemory
 from langchain_community.chat_message_histories import ChatMessageHistory
@@ -18,9 +18,14 @@ import uvicorn
 import os
 from colorama import Fore, Style, init
 from polaris_logger import (
-    log_info, log_success, log_warning, log_error,
-    log_request, log_request_error
+    log_info,
+    log_success,
+    log_warning,
+    log_error,
+    log_request,
+    log_request_error,
 )
+from auth import jwt_auth, log_auth_attempt
 from prometheus_client import (
     CollectorRegistry,
     Gauge,
@@ -382,15 +387,15 @@ from langchain.schema import HumanMessage, AIMessage
 
 
 @app.post("/inference/")
-async def inference(request: InferenceRequest):
-    session_id = request.session_id
-    user_prompt = injetar_session_id(request.prompt, session_id)
+async def inference(
+    prompt: str = Body(...),
+    session_id: str = Body("default_session"),
+    current_user: Optional[Dict] = None,
+):
+    user_prompt = injetar_session_id(prompt, session_id)
     start_time = time.time()
-    
-    log_info(
-        f"📥 Nova solicitação de inferência",
-        session_id=session_id
-    )
+
+    log_info(f"📥 Nova solicitação de inferência", session_id=session_id)
 
     inference_total.labels(session_id=session_id).inc()
     erro = False
@@ -445,7 +450,7 @@ async def inference(request: InferenceRequest):
     try:
         resposta = llm.invoke(full_prompt)
         duration = time.time() - start_time
-        
+
         if "shellPolaris" in resposta:
             # ⚡ Salvar como novo prompt no Chroma com session_id
             comando = injetar_session_id(resposta, session_id)
@@ -453,8 +458,11 @@ async def inference(request: InferenceRequest):
                 texts=[comando], metadatas=[{"session_id": session_id}]
             )
 
-            log_info("🧠 Polaris em modo executivo — aguardando retorno do comando.", 
-                    session_id=session_id, duration=duration)
+            log_info(
+                "🧠 Polaris em modo executivo — aguardando retorno do comando.",
+                session_id=session_id,
+                duration=duration,
+            )
 
             return {
                 "resposta": "Estou verificando as informações solicitadas. Um momento... 🧠"
@@ -469,16 +477,18 @@ async def inference(request: InferenceRequest):
             )
             log_success(f"🧠 Resposta registrada no ChromaDB", session_id=session_id)
         except Exception as e:
-            log_error(f"Erro ao salvar resposta no ChromaDB: {e}", session_id=session_id)
+            log_error(
+                f"Erro ao salvar resposta no ChromaDB: {e}", session_id=session_id
+            )
 
         # Log estruturado da inferência bem-sucedida
-        log_request(session_id, request.prompt, resposta, duration, "llama3")
+        log_request(session_id, prompt, resposta, duration, "llama3")
 
     except Exception as e:
         duration = time.time() - start_time
         erro = True
         inference_failures.labels(session_id=session_id).inc()
-        log_request_error(session_id, request.prompt, str(e), duration)
+        log_request_error(session_id, prompt, str(e), duration)
         raise HTTPException(status_code=500, detail="Erro na inferência")
 
     if USE_PUSHGATEWAY:
@@ -513,13 +523,13 @@ async def health_check():
         mongo_status = "healthy"
         if USE_MONGODB:
             try:
-                client.admin.command('ping')
+                client.admin.command("ping")
             except Exception as e:
                 mongo_status = "unhealthy"
                 log_error(f"MongoDB health check failed: {str(e)}")
         else:
             mongo_status = "disabled"
-        
+
         # Verificar LLM
         llm_status = "healthy"
         try:
@@ -529,31 +539,28 @@ async def health_check():
         except Exception as e:
             llm_status = "unhealthy"
             log_error(f"LLM health check failed: {str(e)}")
-        
+
         # Status geral
         overall_status = "healthy"
         if mongo_status == "unhealthy" or llm_status == "unhealthy":
             overall_status = "unhealthy"
-        
+
         health_data = {
             "status": overall_status,
             "timestamp": datetime.now().isoformat(),
-            "services": {
-                "mongodb": mongo_status,
-                "llm": llm_status
-            },
-            "version": "v2.1"
+            "services": {"mongodb": mongo_status, "llm": llm_status},
+            "version": "v2.1",
         }
-        
+
         return health_data
-        
+
     except Exception as e:
         log_error(f"Health check error: {str(e)}")
         return {
             "status": "error",
             "timestamp": datetime.now().isoformat(),
             "error": str(e),
-            "version": "v2.1"
+            "version": "v2.1",
         }
 
 
@@ -596,11 +603,65 @@ async def upload_pdf(
         raise HTTPException(status_code=500, detail="Erro ao processar o PDF.")
 
 
+# Endpoints de Autenticação
+@app.post("/auth/token")
+async def get_token(client_name: str = Form(...), client_secret: str = Form(...)):
+    """Endpoint para obter token de API"""
+    # Lista simples de clientes autorizados (em produção, use banco de dados)
+    authorized_clients = {
+        "polaris_bot": os.getenv("BOT_SECRET", "bot-secret"),
+        "web_client": os.getenv("WEB_SECRET", "web-secret"),
+        "mobile_app": os.getenv("MOBILE_SECRET", "mobile-secret"),
+    }
+
+    if client_name not in authorized_clients:
+        log_warning(f"Unauthorized client attempt: {client_name}")
+        raise HTTPException(status_code=401, detail="Unauthorized client")
+
+    if client_secret != authorized_clients[client_name]:
+        log_warning(f"Invalid secret for client: {client_name}")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    from auth import create_api_token
+
+    token = create_api_token(client_name)
+    log_success(f"Token created for client: {client_name}")
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": int(os.getenv("JWT_EXPIRY_HOURS", "24")) * 3600,
+    }
+
+
+@app.get("/auth/verify")
+async def verify_token(current_user: Dict = None):
+    """Endpoint para verificar token"""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    return {
+        "valid": True,
+        "user_id": current_user["user_id"],
+        "role": current_user["role"],
+        "expires_at": datetime.fromtimestamp(current_user["exp"]).isoformat(),
+    }
+
+
+# CORS dinâmico baseado em variável de ambiente
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+if ALLOWED_ORIGINS == ["*"]:
+    # Em desenvolvimento, permite tudo
+    allow_origins = ["*"]
+else:
+    # Em produção, lista específica
+    allow_origins = [origin.strip() for origin in ALLOWED_ORIGINS]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 

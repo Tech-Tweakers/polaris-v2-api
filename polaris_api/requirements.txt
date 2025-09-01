@@ -10,3 +10,4 @@ sentence-transformers
 colorama
 pymupdf
 groq
+PyJWT

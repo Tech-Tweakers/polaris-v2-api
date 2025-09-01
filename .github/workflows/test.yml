@@ -1,0 +1,152 @@
+name: 🧪 Test Polaris API
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+    paths:
+      - 'polaris_api/**'
+      - 'tests/**'
+      - '.github/workflows/test.yml'
+      - 'requirements*.txt'
+      - 'Makefile'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'polaris_api/**'
+      - 'tests/**'
+      - '.github/workflows/test.yml'
+      - 'requirements*.txt'
+      - 'Makefile'
+
+env:
+  PYTHON_VERSION: '3.10'
+  MONGODB_VERSION: '6.0'
+
+jobs:
+  test:
+    name: 🧪 Run Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand(\"ping\").ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        
+    - name: 📦 Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential
+        
+    - name: 🔧 Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r polaris_api/requirements.txt
+        pip install -r polaris_api/requirements-test.txt
+        
+    - name: 🧪 Run tests with coverage
+      run: |
+        cd polaris_api
+        python -m pytest ../tests/ -v --cov=. --cov-report=xml --cov-report=html
+        
+    - name: 📊 Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./polaris_api/coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+        
+    - name: 📋 Test summary
+      run: |
+        echo "✅ All tests completed successfully!"
+        echo "📊 Coverage report generated"
+        echo "🚀 Ready for deployment"
+
+  lint:
+    name: 🔍 Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        
+    - name: 🔧 Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black isort mypy
+        
+    - name: 🔍 Run flake8
+      run: |
+        flake8 polaris_api/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 polaris_api/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        
+    - name: 🎨 Run black (code formatting)
+      run: |
+        black --check --diff polaris_api/
+        
+    - name: 📝 Run isort (import sorting)
+      run: |
+        isort --check-only --diff polaris_api/
+        
+    - name: 🔍 Run mypy (type checking)
+      run: |
+        mypy polaris_api/ --ignore-missing-imports
+
+  security:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        
+    - name: 🔧 Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety
+        
+    - name: 🔒 Run bandit (security linting)
+      run: |
+        bandit -r polaris_api/ -f json -o bandit-report.json || true
+        
+    - name: 🔒 Run safety (dependency vulnerability check)
+      run: |
+        safety check -r polaris_api/requirements.txt --json --output safety-report.json || true
+        
+    - name: 📋 Security summary
+      run: |
+        echo "🔒 Security scan completed"
+        if [ -f bandit-report.json ]; then
+          echo "📊 Bandit report: $(cat bandit-report.json | jq -r '.metrics._totals.n_issues') issues found"
+        fi
+        if [ -f safety-report.json ]; then
+          echo "📊 Safety report: $(cat safety-report.json | jq -r '.vulnerabilities | length') vulnerabilities found"
+        fi
