@@ -130,9 +130,11 @@ polaris-v2-api/
 ### 🌐 API Endpoints
 
 **Polaris API (Port 8000):**
-- `POST /inference/` - Main inference endpoint
+- `POST /inference/` - Main inference endpoint (requires JWT auth)
 - `POST /upload-pdf/` - PDF document processing
 - `GET /health` - System health check
+- `POST /auth/token` - Get JWT token
+- `GET /auth/verify` - Verify JWT token
 
 **Polaris Integrations (Port 8010):**
 - `POST /audio-inference/` - Audio processing with STT + TTS
@@ -203,7 +205,13 @@ make install
 **2. Create Environment Files**
 
 ```bash
+# Criar .env com chaves seguras
 make create-env-api
+
+# Se precisar regenerar as chaves
+make regenerate-env-api
+
+# Criar .env do bot
 make create-env-bot
 ```
 
@@ -309,11 +317,29 @@ HF_TOKEN="hf_yourhuggingfaceapikey"
 
 ### API Testing
 
-**Basic Inference Test:**
+**Get JWT Token:**
 
 ```bash
+curl -X POST http://localhost:8000/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_name": "polaris_bot",
+    "client_secret": "bot-secret"
+  }'
+```
+
+**Basic Inference Test (with JWT):**
+
+```bash
+# First get token
+TOKEN=$(curl -s -X POST http://localhost:8000/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"client_name": "polaris_bot", "client_secret": "bot-secret"}' | jq -r '.access_token')
+
+# Then use token
 curl -X POST http://localhost:8000/inference/ \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{
     "prompt": "Hello, Polaris! How are you today?",
     "session_id": "test123"
@@ -416,7 +442,8 @@ make stop-all           # Stop all services
 make restart-all        # Restart all services
 
 # Environment Setup
-make create-env-api     # Create API .env file
+make create-env-api     # Create API .env file with secure keys
+make regenerate-env-api # Regenerate API .env with new keys
 make create-env-bot     # Create Integrations .env file
 
 # Development
