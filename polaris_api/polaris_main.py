@@ -1,38 +1,32 @@
-import time
 import logging
-import requests
-from datetime import datetime
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Body
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import UploadFile, File, Form
-from contextlib import asynccontextmanager
-from dotenv import load_dotenv
-from pydantic import BaseModel
-from typing import Optional, Dict
-from langchain_chroma import Chroma
-from langchain.memory import ConversationBufferMemory
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_huggingface import HuggingFaceEmbeddings
-from pymongo import MongoClient
-import uvicorn
 import os
+import time
+from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Dict, Optional
+
+import uvicorn
 from colorama import Fore, Style, init
+from dotenv import load_dotenv
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from langchain.memory import ConversationBufferMemory
+from langchain.schema import AIMessage, HumanMessage
+from langchain_chroma import Chroma
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_community.document_loaders import PyMuPDFLoader
+from langchain_huggingface import HuggingFaceEmbeddings
 from polaris_logger import (
-    log_info,
-    log_success,
-    log_warning,
     log_error,
+    log_info,
     log_request,
     log_request_error,
+    log_success,
+    log_warning,
 )
-from auth import jwt_auth, log_auth_attempt
-from prometheus_client import (
-    CollectorRegistry,
-    Gauge,
-    Counter,
-    Summary,
-    push_to_gateway,
-)
+from prometheus_client import CollectorRegistry, Counter, Summary, push_to_gateway
+from pydantic import BaseModel
+from pymongo import MongoClient
 
 init(autoreset=True)
 TEXT_COLOR = Fore.LIGHTCYAN_EX
@@ -383,9 +377,6 @@ Resumo:"""
         log_error(f"Erro ao resumir a memória do LangChain: {str(e)}")
 
 
-from langchain.schema import HumanMessage, AIMessage
-
-
 @app.post("/inference/")
 async def inference(
     prompt: str = Body(...),
@@ -398,7 +389,7 @@ async def inference(
     log_info(f"📥 Nova solicitação de inferência", session_id=session_id)
 
     inference_total.labels(session_id=session_id).inc()
-    erro = False
+    # erro = False  # Variável não utilizada
 
     keywords = load_keywords_from_file()
 
@@ -475,7 +466,7 @@ async def inference(
             vectorstore.add_texts(
                 texts=[resposta_com_id], metadatas=[{"session_id": session_id}]
             )
-            log_success(f"🧠 Resposta registrada no ChromaDB", session_id=session_id)
+            log_success("🧠 Resposta registrada no ChromaDB", session_id=session_id)
         except Exception as e:
             log_error(
                 f"Erro ao salvar resposta no ChromaDB: {e}", session_id=session_id
@@ -486,7 +477,7 @@ async def inference(
 
     except Exception as e:
         duration = time.time() - start_time
-        erro = True
+        # erro = True  # Variável não utilizada
         inference_failures.labels(session_id=session_id).inc()
         log_request_error(session_id, prompt, str(e), duration)
         raise HTTPException(status_code=500, detail="Erro na inferência")
@@ -505,9 +496,6 @@ async def inference(
         log_info("📉 Envio de métricas ao Pushgateway desativado por configuração.")
 
     return {"resposta": resposta}
-
-
-from pydantic import BaseModel
 
 
 class CommandResponse(BaseModel):
@@ -575,8 +563,6 @@ async def upload_pdf(
             f.write(await file.read())
 
         log_info(f"📂 PDF recebido para sessão {session_id}: {temp_pdf_path}")
-
-        from langchain_community.document_loaders import PyMuPDFLoader
 
         loader = PyMuPDFLoader(temp_pdf_path)
         documents = loader.load()

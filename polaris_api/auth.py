@@ -1,11 +1,11 @@
-import jwt
-import time
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
-from fastapi import HTTPException, Depends, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
-from polaris_logger import log_warning, log_error, log_info, log_success
+from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
+
+import jwt
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from polaris_logger import log_info, log_warning
 
 # Configuração JWT
 JWT_SECRET = os.getenv("JWT_SECRET", "your-super-secret-key-change-this")

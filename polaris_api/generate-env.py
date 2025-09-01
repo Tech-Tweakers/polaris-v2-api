@@ -3,7 +3,6 @@
 Script para gerar arquivo .env com configurações seguras
 """
 
-import os
 import secrets
 import string
 

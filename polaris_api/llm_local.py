@@ -1,9 +1,10 @@
 import os
 import time
+
+from dotenv import load_dotenv
 from fastapi import HTTPException
 from llama_cpp import Llama
-from polaris_logger import log_info, log_success, log_error
-from dotenv import load_dotenv
+from polaris_logger import log_error, log_info, log_success
 
 load_dotenv()
 

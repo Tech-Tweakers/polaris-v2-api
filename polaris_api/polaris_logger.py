@@ -1,8 +1,8 @@
-import logging
 import json
-import time
+import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Optional
+
 from colorama import Fore, Style, init
 
 init(autoreset=True)

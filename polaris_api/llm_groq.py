@@ -1,5 +1,5 @@
 from groq import Groq
-from polaris_logger import log_info, log_success, log_warning, log_error
+from polaris_logger import log_error, log_info, log_success
 
 
 class GroqLLM:
@@ -29,9 +29,9 @@ class GroqLLM:
         )
 
         try:
-            log_info(f"📤 Enviando prompt para o backend remoto...")
+            log_info("📤 Enviando prompt para o backend remoto...")
             content = chat_completion.choices[0].message.content
-            log_success(f"🧠 Resposta remota recebida com sucesso.")
+            log_success("🧠 Resposta remota recebida com sucesso.")
             return content
         except Exception as e:
             log_error(f"❌ Erro na inferência via backend remoto: {e}")

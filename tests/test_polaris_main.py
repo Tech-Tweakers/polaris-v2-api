@@ -244,9 +244,7 @@ class TestPDFUpload:
                 mock_file = Mock()
                 mock_open.return_value.__enter__.return_value = mock_file
 
-                with patch(
-                    "langchain_community.document_loaders.PyMuPDFLoader"
-                ) as mock_loader:
+                with patch("polaris_main.PyMuPDFLoader") as mock_loader:
                     mock_doc = Mock()
                     mock_doc.page_content = "Test PDF content"
                     mock_loader.return_value.load.return_value = [mock_doc]
