@@ -9,4 +9,4 @@ langchain-community
 sentence-transformers
 colorama
 pymupdf
-
+groq
