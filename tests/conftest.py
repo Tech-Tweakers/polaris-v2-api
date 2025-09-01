@@ -5,7 +5,8 @@ import os
 import sys
 
 # Adicionar o diretório polaris_api ao path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'polaris_api'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "polaris_api"))
+
 
 @pytest.fixture
 def mock_env_vars():
@@ -29,13 +30,14 @@ def mock_env_vars():
         "BOT_SECRET": "test-bot-secret",
         "WEB_SECRET": "test-web-secret",
         "MOBILE_SECRET": "test-mobile-secret",
-        "ALLOWED_ORIGINS": "https://tech-tweakers.github.io,https://*.trycloudflare.com"
+        "ALLOWED_ORIGINS": "https://tech-tweakers.github.io,https://*.trycloudflare.com",
     }
-    
+
     with pytest.MonkeyPatch().context() as m:
         for key, value in env_vars.items():
             m.setenv(key, value)
         yield env_vars
+
 
 @pytest.fixture
 def mock_jwt_env():
@@ -49,17 +51,19 @@ def mock_jwt_env():
         m.delenv("JWT_SECRET", raising=False)
         m.delenv("JWT_EXPIRY_HOURS", raising=False)
 
+
 @pytest.fixture
 def mock_mongodb():
     """Mock do MongoDB"""
     mock_client = Mock()
     mock_db = Mock()
     mock_collection = Mock()
-    
+
     mock_client.__getitem__.return_value = mock_db
     mock_db.__getitem__.return_value = mock_collection
-    
+
     return mock_client, mock_db, mock_collection
+
 
 @pytest.fixture
 def mock_mongodb_client():
@@ -67,6 +71,7 @@ def mock_mongodb_client():
     mock_client = Mock()
     mock_client.admin.command.return_value = {"ok": 1}
     return mock_client
+
 
 @pytest.fixture
 def mock_llm():
@@ -77,12 +82,14 @@ def mock_llm():
     mock_llm.close.return_value = None
     return mock_llm
 
+
 @pytest.fixture
 def mock_vectorstore():
     """Mock do VectorStore"""
     mock_vs = Mock()
     mock_vs.add_texts.return_value = ["doc1", "doc2"]
     return mock_vs
+
 
 @pytest.fixture
 def mock_embeddings():
@@ -91,17 +98,20 @@ def mock_embeddings():
     mock_emb.model_name = "sentence-transformers/all-MiniLM-L6-v2"
     return mock_emb
 
+
 @pytest.fixture
 def mock_fastapi_app():
     """Mock da aplicação FastAPI"""
     from fastapi import FastAPI
+
     app = FastAPI()
-    
+
     @app.get("/test")
     async def test_endpoint():
         return {"message": "test"}
-    
+
     return app
+
 
 @pytest.fixture
 def mock_llm():
@@ -111,6 +121,7 @@ def mock_llm():
     mock_llm.load.return_value = None
     mock_llm.close.return_value = None
     return mock_llm
+
 
 @pytest.fixture
 def mock_vectorstore():

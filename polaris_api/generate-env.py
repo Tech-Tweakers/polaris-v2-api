@@ -7,26 +7,28 @@ import os
 import secrets
 import string
 
+
 def generate_secret(length=32):
     """Gera uma chave secreta aleatória"""
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
 
 def generate_env_file(domain=None):
     """Gera o arquivo .env com configurações seguras"""
-    
+
     # Gerar chaves secretas únicas
     jwt_secret = generate_secret(48)
     bot_secret = generate_secret(24)
     web_secret = generate_secret(24)
     mobile_secret = generate_secret(24)
-    
+
     # Configurar CORS
     if domain:
         allowed_origins = f'"{domain}"'
     else:
         allowed_origins = '"*"'
-    
+
     env_content = f"""# Model Configuration
 USE_LOCAL_LLM=false  # true to use local llama.cpp, false for Groq API
 MODEL_PATH="../models/llama3-7B.safetensors"
@@ -68,11 +70,11 @@ MOBILE_SECRET="{mobile_secret}"
 # CORS Configuration
 ALLOWED_ORIGINS={allowed_origins}  # Development: "*" | Production: "https://yourdomain.com,https://app.yourdomain.com"
 """
-    
+
     # Escrever arquivo .env
-    with open('.env', 'w') as f:
+    with open(".env", "w") as f:
         f.write(env_content)
-    
+
     print("✅ Arquivo .env gerado com sucesso!")
     print(f"🔑 JWT Secret: {jwt_secret}")
     print(f"🤖 Bot Secret: {bot_secret}")
@@ -81,12 +83,13 @@ ALLOWED_ORIGINS={allowed_origins}  # Development: "*" | Production: "https://you
     print("\n⚠️  IMPORTANTE: Guarde essas chaves em local seguro!")
     print("📝 Configure essas mesmas chaves no frontend e Telegram bot.")
 
+
 if __name__ == "__main__":
     import sys
-    
+
     # Verificar se foi passado um domínio como argumento
     domain = sys.argv[1] if len(sys.argv) > 1 else None
-    
+
     if domain:
         print(f"🌐 Configurando CORS para: {domain}")
         generate_env_file(domain)
