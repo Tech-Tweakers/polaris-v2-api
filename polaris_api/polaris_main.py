@@ -17,7 +17,10 @@ from pymongo import MongoClient
 import uvicorn
 import os
 from colorama import Fore, Style, init
-from polaris_logger import log_info, log_success, log_warning, log_error
+from polaris_logger import (
+    log_info, log_success, log_warning, log_error,
+    log_request, log_request_error
+)
 from prometheus_client import (
     CollectorRegistry,
     Gauge,
@@ -382,12 +385,14 @@ from langchain.schema import HumanMessage, AIMessage
 async def inference(request: InferenceRequest):
     session_id = request.session_id
     user_prompt = injetar_session_id(request.prompt, session_id)
+    start_time = time.time()
+    
     log_info(
-        f"📥 Nova solicitação de inferência para sessão {session_id}: {user_prompt}"
+        f"📥 Nova solicitação de inferência",
+        session_id=session_id
     )
 
     inference_total.labels(session_id=session_id).inc()
-    start_time = time.time()
     erro = False
 
     keywords = load_keywords_from_file()
@@ -439,6 +444,8 @@ async def inference(request: InferenceRequest):
 
     try:
         resposta = llm.invoke(full_prompt)
+        duration = time.time() - start_time
+        
         if "shellPolaris" in resposta:
             # ⚡ Salvar como novo prompt no Chroma com session_id
             comando = injetar_session_id(resposta, session_id)
@@ -446,7 +453,8 @@ async def inference(request: InferenceRequest):
                 texts=[comando], metadatas=[{"session_id": session_id}]
             )
 
-            log_info("🧠 Polaris em modo executivo — aguardando retorno do comando.")
+            log_info("🧠 Polaris em modo executivo — aguardando retorno do comando.", 
+                    session_id=session_id, duration=duration)
 
             return {
                 "resposta": "Estou verificando as informações solicitadas. Um momento... 🧠"
@@ -459,14 +467,18 @@ async def inference(request: InferenceRequest):
             vectorstore.add_texts(
                 texts=[resposta_com_id], metadatas=[{"session_id": session_id}]
             )
-            log_success(f"🧠 Resposta registrada no ChromaDB para sessão {session_id}.")
+            log_success(f"🧠 Resposta registrada no ChromaDB", session_id=session_id)
         except Exception as e:
-            log_error(f"Erro ao salvar resposta no ChromaDB: {e}")
+            log_error(f"Erro ao salvar resposta no ChromaDB: {e}", session_id=session_id)
+
+        # Log estruturado da inferência bem-sucedida
+        log_request(session_id, request.prompt, resposta, duration, "llama3")
 
     except Exception as e:
+        duration = time.time() - start_time
         erro = True
         inference_failures.labels(session_id=session_id).inc()
-        log_error(f"Erro ao gerar resposta: {e}")
+        log_request_error(session_id, request.prompt, str(e), duration)
         raise HTTPException(status_code=500, detail="Erro na inferência")
 
     if USE_PUSHGATEWAY:
@@ -491,6 +503,58 @@ from pydantic import BaseModel
 class CommandResponse(BaseModel):
     session_id: str
     resposta: str
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint para monitoramento"""
+    try:
+        # Verificar MongoDB
+        mongo_status = "healthy"
+        if USE_MONGODB:
+            try:
+                client.admin.command('ping')
+            except Exception as e:
+                mongo_status = "unhealthy"
+                log_error(f"MongoDB health check failed: {str(e)}")
+        else:
+            mongo_status = "disabled"
+        
+        # Verificar LLM
+        llm_status = "healthy"
+        try:
+            test_response = llm.invoke("Test")
+            if not test_response:
+                llm_status = "unhealthy"
+        except Exception as e:
+            llm_status = "unhealthy"
+            log_error(f"LLM health check failed: {str(e)}")
+        
+        # Status geral
+        overall_status = "healthy"
+        if mongo_status == "unhealthy" or llm_status == "unhealthy":
+            overall_status = "unhealthy"
+        
+        health_data = {
+            "status": overall_status,
+            "timestamp": datetime.now().isoformat(),
+            "services": {
+                "mongodb": mongo_status,
+                "llm": llm_status
+            },
+            "version": "v2.1"
+        }
+        
+        return health_data
+        
+    except Exception as e:
+        log_error(f"Health check error: {str(e)}")
+        return {
+            "status": "error",
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e),
+            "version": "v2.1"
+        }
 
 
 @app.post("/upload-pdf/")

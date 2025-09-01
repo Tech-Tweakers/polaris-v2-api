@@ -132,6 +132,7 @@ polaris-v2-api/
 **Polaris API (Port 8000):**
 - `POST /inference/` - Main inference endpoint
 - `POST /upload-pdf/` - PDF document processing
+- `GET /health` - System health check
 
 **Polaris Integrations (Port 8010):**
 - `POST /audio-inference/` - Audio processing with STT + TTS
@@ -231,6 +232,9 @@ make start-all
 curl -X POST http://localhost:8000/inference/ \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Hello, Polaris!", "session_id": "test123"}'
+
+# Test health check
+curl http://localhost:8000/health
 
 # Test integrations API
 curl http://localhost:8010/metrics
@@ -375,6 +379,9 @@ The system provides metrics for:
 ### Health Checks
 
 ```bash
+# API Health Check
+curl http://localhost:8000/health
+
 # MongoDB Health Check
 curl http://localhost:27017
 
