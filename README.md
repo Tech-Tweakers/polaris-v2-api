@@ -424,12 +424,12 @@ curl http://localhost:8010/metrics
 
 ```bash
 # Installation
-make install              # Install all dependencies
-make setup               # Initial system setup
+make install            # Install all dependencies
+make setup              # Initial system setup
 
 # Model Management
-make download-model      # Download LLaMA 3 model
-make clean-models        # Remove downloaded models
+make download-model     # Download LLaMA 3 model
+make clean-models       # Remove downloaded models
 
 # Database Management
 make start-db           # Start MongoDB
