@@ -8,7 +8,7 @@ from typing import Dict, Optional
 import uvicorn
 from colorama import Fore, Style, init
 from dotenv import load_dotenv
-from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import AIMessage, HumanMessage
@@ -518,25 +518,25 @@ async def health_check():
         else:
             mongo_status = "disabled"
 
-        # Verificar LLM
-        llm_status = "healthy"
-        try:
-            test_response = llm.invoke("Test")
-            if not test_response:
-                llm_status = "unhealthy"
-        except Exception as e:
-            llm_status = "unhealthy"
-            log_error(f"LLM health check failed: {str(e)}")
+        # # Verificar LLM
+        # llm_status = "healthy"
+        # try:
+        #     test_response = llm.invoke("Test")
+        #     if not test_response:
+        #         llm_status = "unhealthy"
+        # except Exception as e:
+        #     llm_status = "unhealthy"
+        #     log_error(f"LLM health check failed: {str(e)}")
 
         # Status geral
         overall_status = "healthy"
-        if mongo_status == "unhealthy" or llm_status == "unhealthy":
+        if mongo_status == "unhealthy":
             overall_status = "unhealthy"
 
         health_data = {
             "status": overall_status,
             "timestamp": datetime.now().isoformat(),
-            "services": {"mongodb": mongo_status, "llm": llm_status},
+            "services": {"mongodb": mongo_status},
             "version": "v2.1",
         }
 
@@ -591,8 +591,29 @@ async def upload_pdf(
 
 # Endpoints de Autenticação
 @app.post("/auth/token")
-async def get_token(client_name: str = Form(...), client_secret: str = Form(...)):
+async def get_token(
+    request: Request,
+    client_name: Optional[str] = Form(None), 
+    client_secret: Optional[str] = Form(None)
+):
     """Endpoint para obter token de API"""
+    
+    # Pegar query parameters da URL
+    query_params = request.query_params
+    client_name_q = query_params.get("client_name")
+    client_secret_q = query_params.get("client_secret")
+    
+    # Usar query parameters se disponíveis, senão usar form data
+    final_client_name = client_name_q or client_name
+    final_client_secret = client_secret_q or client_secret
+    
+    # Validar se pelo menos um dos dois foi fornecido
+    if not final_client_name or not final_client_secret:
+        raise HTTPException(
+            status_code=422, 
+            detail="client_name and client_secret are required (can be in query params or form data)"
+        )
+    
     # Lista simples de clientes autorizados (em produção, use banco de dados)
     authorized_clients = {
         "polaris_bot": os.getenv("BOT_SECRET", "bot-secret"),
@@ -600,18 +621,18 @@ async def get_token(client_name: str = Form(...), client_secret: str = Form(...)
         "mobile_app": os.getenv("MOBILE_SECRET", "mobile-secret"),
     }
 
-    if client_name not in authorized_clients:
-        log_warning(f"Unauthorized client attempt: {client_name}")
+    if final_client_name not in authorized_clients:
+        log_warning(f"Unauthorized client attempt: {final_client_name}")
         raise HTTPException(status_code=401, detail="Unauthorized client")
 
-    if client_secret != authorized_clients[client_name]:
-        log_warning(f"Invalid secret for client: {client_name}")
+    if final_client_secret != authorized_clients[final_client_name]:
+        log_warning(f"Invalid secret for client: {final_client_name}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     from auth import create_api_token
 
-    token = create_api_token(client_name)
-    log_success(f"Token created for client: {client_name}")
+    token = create_api_token(final_client_name)
+    log_success(f"Token created for client: {final_client_name}")
 
     return {
         "access_token": token,

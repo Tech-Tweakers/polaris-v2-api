@@ -1,4 +1,4 @@
-# 🌟 Polaris AI v2.1 – Advanced Multi-Modal AI Assistant
+# 🌟 Polaris AI v2.1 – Multi-Modal AI Assistant
 
 <div align="center">
 
@@ -16,6 +16,8 @@
 [![GitHub release](https://img.shields.io/github/v/release/Tech-Tweakers/polaris-v2-api)](https://github.com/Tech-Tweakers/polaris-v2-api/releases)
 [![GitHub stars](https://img.shields.io/github/stars/Tech-Tweakers/polaris-v2-api)](https://github.com/Tech-Tweakers/polaris-v2-api/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/Tech-Tweakers/polaris-v2-api)](https://github.com/Tech-Tweakers/polaris-v2-api/network)
+
+
 
 </div>
 

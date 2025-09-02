@@ -25,11 +25,11 @@ from TTS.tts.models.xtts import XttsAudioConfig
 from TTS.tts.models.xtts import XttsArgs
 from TTS.config.shared_configs import BaseDatasetConfig
 
-from fastapi import FastAPI, UploadFile, Form
+from fastapi import FastAPI, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from polaris_integrations.tts_router import gerar_audio
+from tts_router import gerar_audio
 from prometheus_client import (
     CollectorRegistry,
     Gauge,
@@ -265,6 +265,34 @@ async def audio_inference(audio: UploadFile, session_id: str = Form(...)):
 
 from fastapi.responses import Response
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+
+
+@api.get("/health")
+def health_check():
+    """Endpoint de health check para verificar o status da aplicação"""
+    try:
+        # Verificar se os componentes principais estão funcionando
+        health_status = {
+            "status": "healthy",
+            "timestamp": time.time(),
+            "services": {
+                "whisper": "loaded" if whisper else "not_loaded",
+                "tts": "loaded" if tts else "not_loaded"
+            }
+        }
+        
+        return JSONResponse(content=health_status, status_code=200)
+        
+    except Exception as e:
+        log_error(f"Erro no health check: {e}")
+        return JSONResponse(
+            content={
+                "status": "unhealthy",
+                "timestamp": time.time(),
+                "error": str(e)
+            },
+            status_code=500
+        )
 
 
 @api.get("/metrics")
