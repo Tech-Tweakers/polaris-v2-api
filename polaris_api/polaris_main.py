@@ -1,10 +1,12 @@
 import time
 import logging
 import requests
+import asyncio
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -134,6 +136,8 @@ log_info("Configurando memória do LangChain...")
 
 embedder = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embedder)
+VECTORSTORE_ENABLED = True
+log_success("✅ VectorStore configurado com sucesso!")
 
 
 def injetar_session_id(texto: str, session_id: str) -> str:
@@ -405,22 +409,26 @@ async def inference(
     if any(kw in user_prompt.lower() for kw in keywords):
         save_to_mongo(user_prompt, session_id)
 
-    try:
-        retrieved_docs = vectorstore.similarity_search(
-            user_prompt, k=3, filter={"session_id": session_id}
-        )
-        docs_context = "\n".join([doc.page_content for doc in retrieved_docs])
-        if docs_context:
-            log_info(
-                f"📚 {len(retrieved_docs)} trechos relevantes encontrados no vectorstore."
+    docs_context = ""
+    if VECTORSTORE_ENABLED:
+        try:
+            retrieved_docs = vectorstore.similarity_search(
+                user_prompt, k=3, filter={"session_id": session_id}
             )
-            docs_context = f"📚 Conteúdo relevante dos documentos:\n{docs_context}\n\n"
-        else:
+            docs_context = "\n".join([doc.page_content for doc in retrieved_docs])
+            if docs_context:
+                log_info(
+                    f"📚 {len(retrieved_docs)} trechos relevantes encontrados no vectorstore."
+                )
+                docs_context = f"📚 Conteúdo relevante dos documentos:\n{docs_context}\n\n"
+            else:
+                docs_context = ""
+                log_info("📚 Nenhum documento relevante encontrado no vectorstore.")
+        except Exception as e:
+            log_error(f"Erro ao buscar no vectorstore: {e}")
             docs_context = ""
-            log_info("📚 Nenhum documento relevante encontrado no vectorstore.")
-    except Exception as e:
-        log_error(f"Erro ao buscar no vectorstore: {e}")
-        docs_context = ""
+    else:
+        log_info("📚 VectorStore desabilitado - pulando busca de documentos.")
 
     mongo_memories = get_memories(session_id)
     recent_memories = get_recent_memories(session_id)
@@ -453,10 +461,11 @@ async def inference(
 
         if "shellPolaris" in resposta:
             # ⚡ Salvar como novo prompt no Chroma com session_id
-            comando = injetar_session_id(resposta, session_id)
-            vectorstore.add_texts(
-                texts=[comando], metadatas=[{"session_id": session_id}]
-            )
+            if VECTORSTORE_ENABLED:
+                comando = injetar_session_id(resposta, session_id)
+                vectorstore.add_texts(
+                    texts=[comando], metadatas=[{"session_id": session_id}]
+                )
 
             log_info(
                 "🧠 Polaris em modo executivo — aguardando retorno do comando.",
@@ -470,16 +479,17 @@ async def inference(
 
         await save_to_langchain_memory(user_prompt, resposta, session_id)
 
-        try:
-            resposta_com_id = injetar_session_id(resposta, session_id)
-            vectorstore.add_texts(
-                texts=[resposta_com_id], metadatas=[{"session_id": session_id}]
-            )
-            log_success(f"🧠 Resposta registrada no ChromaDB", session_id=session_id)
-        except Exception as e:
-            log_error(
-                f"Erro ao salvar resposta no ChromaDB: {e}", session_id=session_id
-            )
+        if VECTORSTORE_ENABLED:
+            try:
+                resposta_com_id = injetar_session_id(resposta, session_id)
+                vectorstore.add_texts(
+                    texts=[resposta_com_id], metadatas=[{"session_id": session_id}]
+                )
+                log_success(f"🧠 Resposta registrada no ChromaDB", session_id=session_id)
+            except Exception as e:
+                log_error(
+                    f"Erro ao salvar resposta no ChromaDB: {e}", session_id=session_id
+                )
 
         # Log estruturado da inferência bem-sucedida
         log_request(session_id, prompt, resposta, duration, "llama3")
@@ -507,6 +517,138 @@ async def inference(
     return {"resposta": resposta}
 
 
+@app.post("/inference/stream/")
+async def inference_stream(prompt: str = Form(...), session_id: str = Form("default_session"), current_user: Optional[Dict] = Depends(jwt_auth.get_current_user)):
+    """Endpoint de streaming usando Server-Sent Events"""
+
+    async def generate():
+        try:
+            user_prompt = injetar_session_id(prompt, session_id)
+            start_time = time.time()
+
+            log_info(f"📥 Nova solicitação de streaming", session_id=session_id)
+
+            inference_total.labels(session_id=session_id).inc()
+
+            keywords = load_keywords_from_file()
+
+            if any(kw in user_prompt.lower() for kw in keywords):
+                save_to_mongo(user_prompt, session_id)
+
+            # Busca no vectorstore (igual ao endpoint normal)
+            docs_context = ""
+            if VECTORSTORE_ENABLED:
+                try:
+                    retrieved_docs = vectorstore.similarity_search(
+                        user_prompt, k=3, filter={"session_id": session_id}
+                    )
+                    docs_context = "\n".join([doc.page_content for doc in retrieved_docs])
+                    if docs_context:
+                        log_info(f"📚 {len(retrieved_docs)} trechos relevantes encontrados no vectorstore.")
+                        docs_context = f"📚 Conteúdo relevante dos documentos:\n{docs_context}\n\n"
+                    else:
+                        docs_context = ""
+                        log_info("📚 Nenhum documento relevante encontrado no vectorstore.")
+                except Exception as e:
+                    log_error(f"Erro ao buscar no vectorstore: {e}")
+                    docs_context = ""
+
+            # Memória
+            mongo_memories = get_memories(session_id)
+            recent_memories = get_recent_memories(session_id)
+
+            context_pieces = []
+            if mongo_memories:
+                context_pieces.append("Memória do Usuário:\n" + "\n".join(mongo_memories))
+            if recent_memories:
+                context_pieces.append("Conversa recente:\n" + recent_memories)
+
+            context = "\n".join(context_pieces)
+            prompt_instrucoes = load_prompt_from_file()
+
+            full_prompt = f"""<|start_header_id|>system<|end_header_id|>
+{prompt_instrucoes}
+
+{docs_context}
+{context}
+
+<|eot_id|>
+<|start_header_id|>user<|end_header_id|>
+{user_prompt}<|eot_id|>
+<|start_header_id|>assistant<|end_header_id|>
+"""
+
+            # Início da resposta
+            yield "data: [START]\n\n"
+
+            # Buffer para armazenar chunks
+            chunk_buffer = []
+
+            def stream_callback(chunk):
+                chunk_buffer.append(chunk)
+                log_info(f"📦 Chunk buffered: '{chunk}'")
+
+            # Streaming verdadeiro com callback
+            try:
+                resposta_completa = llm.invoke_stream(full_prompt, stream_callback)
+                log_info(f"📝 Streaming concluído: {len(resposta_completa)} chars, {len(chunk_buffer)} chunks")
+
+                # Envia chunks buffered
+                for chunk in chunk_buffer:
+                    yield f"data: {chunk}\n\n"
+                    # Pequena pausa para efeito visual
+                    await asyncio.sleep(0.01)
+
+                if "shellPolaris" in resposta_completa:
+                    if VECTORSTORE_ENABLED:
+                        comando = injetar_session_id(resposta_completa, session_id)
+                        vectorstore.add_texts(texts=[comando], metadatas=[{"session_id": session_id}])
+
+                    log_info("🧠 Polaris em modo executivo — aguardando retorno do comando.", session_id=session_id)
+                    yield "data: [EXEC_MODE]\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+
+                # Salva na memória e vectorstore
+                save_to_langchain_memory(user_prompt, resposta_completa, session_id)
+
+                if VECTORSTORE_ENABLED:
+                    try:
+                        resposta_com_id = injetar_session_id(resposta_completa, session_id)
+                        vectorstore.add_texts(texts=[resposta_com_id], metadatas=[{"session_id": session_id}])
+                        log_success(f"🧠 Resposta registrada no ChromaDB", session_id=session_id)
+                    except Exception as e:
+                        log_error(f"Erro ao salvar resposta no ChromaDB: {e}", session_id=session_id)
+
+                duration = time.time() - start_time
+                log_request(session_id, prompt, resposta_completa, duration, "groq-streaming")
+
+                # Fim da resposta
+                yield "data: [DONE]\n\n"
+
+            except Exception as e:
+                duration = time.time() - start_time
+                log_request_error(session_id, prompt, str(e), duration)
+                yield f"data: [ERROR] {str(e)}\n\n"
+                yield "data: [DONE]\n\n"
+
+        except Exception as e:
+            log_error(f"Erro geral no streaming: {str(e)}")
+            yield f"data: [ERROR] Erro interno do servidor\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control",
+        }
+    )
+
+
 from pydantic import BaseModel
 
 
@@ -523,7 +665,11 @@ async def health_check():
         mongo_status = "healthy"
         if USE_MONGODB:
             try:
-                client.admin.command("ping")
+                log_info("🔍 Testing MongoDB connection in health check...")
+                test_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+                test_client.admin.command("ping")
+                test_client.close()
+                log_info("✅ MongoDB health check passed")
             except Exception as e:
                 mongo_status = "unhealthy"
                 log_error(f"MongoDB health check failed: {str(e)}")
@@ -583,11 +729,14 @@ async def upload_pdf(
 
         log_info(f"📖 {len(documents)} documentos carregados do PDF.")
 
-        for doc in documents:
-            texto_pdf = injetar_session_id(doc.page_content, session_id)
-            vectorstore.add_texts(
-                texts=[texto_pdf], metadatas=[{"session_id": session_id}]
-            )
+        if VECTORSTORE_ENABLED:
+            for doc in documents:
+                texto_pdf = injetar_session_id(doc.page_content, session_id)
+                vectorstore.add_texts(
+                    texts=[texto_pdf], metadatas=[{"session_id": session_id}]
+                )
+        else:
+            log_warning("⚠️ VectorStore desabilitado - PDF não será indexado.")
 
         log_success(
             f"✅ Conteúdo do PDF adicionado ao VectorStore para sessão '{session_id}'!"
