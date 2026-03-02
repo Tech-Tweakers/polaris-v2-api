@@ -114,7 +114,7 @@ start-integrations:
 		echo "⚠️  .env do Polaris Integrations não encontrado!"; \
 		exit 1; \
 	fi
-	cd polaris_integrations && $(PYTHON) main.py
+	$(PYTHON) -m polaris_integrations.main
 
 # ------------------------------------------------------------------------------------------
 # 🔄 Rodar tudo
