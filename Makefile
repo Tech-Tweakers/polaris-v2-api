@@ -55,17 +55,6 @@ install-gpu: venv
 	@echo "✅ Dependências instaladas (GPU/CUDA)!"
 
 # ------------------------------------------------------------------------------------------
-# 📦 Instalar dependências (CPU-only, sem CUDA)
-# ------------------------------------------------------------------------------------------
-.PHONY: install-cpu
-install-cpu:
-	@echo "📦 Instalando dependências (CPU-only)..."
-	$(PIP) install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-	$(PIP) install -r polaris_api/requirements.txt
-	$(PIP) install -r polaris_integrations/requirements-cpu.txt
-	@echo "✅ Dependências CPU-only instaladas!"
-
-# ------------------------------------------------------------------------------------------
 # 🤖 Baixar modelo LLaMA 3
 # ------------------------------------------------------------------------------------------
 .PHONY: download-model
