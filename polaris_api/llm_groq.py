@@ -3,7 +3,7 @@ from polaris_logger import log_info, log_success, log_warning, log_error
 
 
 class GroqLLM:
-    def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile"):
+    def __init__(self, api_key: str, model: str = "openai/gpt-oss-20b"):
         self.api_key = api_key
         self.model = model
 

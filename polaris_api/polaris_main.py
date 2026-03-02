@@ -609,7 +609,9 @@ async def inference_stream(prompt: str = Body(...), session_id: str = Body("defa
                     if isinstance(item, Exception):
                         raise item
                     resposta_completa += item
-                    yield f"data: {item}\n\n"
+                    # SSE data lines can't contain raw newlines — encode them
+                    safe_item = item.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
+                    yield f"data: {safe_item}\n\n"
 
                 if "shellPolaris" in resposta_completa:
                     if VECTORSTORE_ENABLED:
