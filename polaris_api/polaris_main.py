@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import Optional, Dict
 from langchain_chroma import Chroma
-from langchain.memory import ConversationBufferMemory
+from langchain_classic.memory.buffer import ConversationBufferMemory
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_huggingface import HuggingFaceEmbeddings
 from pymongo import MongoClient
@@ -387,7 +387,7 @@ Resumo:"""
         log_error(f"Erro ao resumir a memória do LangChain: {str(e)}")
 
 
-from langchain.schema import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 
 
 @app.post("/inference/")
@@ -518,7 +518,7 @@ async def inference(
 
 
 @app.post("/inference/stream/")
-async def inference_stream(prompt: str = Form(...), session_id: str = Form("default_session"), current_user: Optional[Dict] = Depends(jwt_auth.get_current_user)):
+async def inference_stream(prompt: str = Body(...), session_id: str = Body("default_session"), current_user: Optional[Dict] = Depends(jwt_auth.get_current_user)):
     """Endpoint de streaming usando Server-Sent Events"""
 
     async def generate():
@@ -535,7 +535,7 @@ async def inference_stream(prompt: str = Form(...), session_id: str = Form("defa
             if any(kw in user_prompt.lower() for kw in keywords):
                 save_to_mongo(user_prompt, session_id)
 
-            # Busca no vectorstore (igual ao endpoint normal)
+            # Busca no vectorstore
             docs_context = ""
             if VECTORSTORE_ENABLED:
                 try:
@@ -548,7 +548,6 @@ async def inference_stream(prompt: str = Form(...), session_id: str = Form("defa
                         docs_context = f"📚 Conteúdo relevante dos documentos:\n{docs_context}\n\n"
                     else:
                         docs_context = ""
-                        log_info("📚 Nenhum documento relevante encontrado no vectorstore.")
                 except Exception as e:
                     log_error(f"Erro ao buscar no vectorstore: {e}")
                     docs_context = ""
@@ -578,33 +577,45 @@ async def inference_stream(prompt: str = Form(...), session_id: str = Form("defa
 <|start_header_id|>assistant<|end_header_id|>
 """
 
-            # Início da resposta
             yield "data: [START]\n\n"
 
-            # Buffer para armazenar chunks
-            chunk_buffer = []
+            # Streaming real: yield cada token conforme chega do Groq
+            # stream_chunks() é síncrono — rodamos em thread pra não bloquear o event loop
+            import queue
+            chunk_queue = queue.Queue()
+            SENTINEL = object()
 
-            def stream_callback(chunk):
-                chunk_buffer.append(chunk)
-                log_info(f"📦 Chunk buffered: '{chunk}'")
+            def _run_sync_stream():
+                try:
+                    for c in llm.stream_chunks(full_prompt):
+                        chunk_queue.put(c)
+                except Exception as e:
+                    chunk_queue.put(e)
+                finally:
+                    chunk_queue.put(SENTINEL)
 
-            # Streaming verdadeiro com callback
+            loop = asyncio.get_event_loop()
+            loop.run_in_executor(None, _run_sync_stream)
+
+            resposta_completa = ""
             try:
-                resposta_completa = llm.invoke_stream(full_prompt, stream_callback)
-                log_info(f"📝 Streaming concluído: {len(resposta_completa)} chars, {len(chunk_buffer)} chunks")
-
-                # Envia chunks buffered
-                for chunk in chunk_buffer:
-                    yield f"data: {chunk}\n\n"
-                    # Pequena pausa para efeito visual
-                    await asyncio.sleep(0.01)
+                while True:
+                    # Espera chunk sem bloquear o event loop
+                    while chunk_queue.empty():
+                        await asyncio.sleep(0.01)
+                    item = chunk_queue.get()
+                    if item is SENTINEL:
+                        break
+                    if isinstance(item, Exception):
+                        raise item
+                    resposta_completa += item
+                    yield f"data: {item}\n\n"
 
                 if "shellPolaris" in resposta_completa:
                     if VECTORSTORE_ENABLED:
                         comando = injetar_session_id(resposta_completa, session_id)
                         vectorstore.add_texts(texts=[comando], metadatas=[{"session_id": session_id}])
-
-                    log_info("🧠 Polaris em modo executivo — aguardando retorno do comando.", session_id=session_id)
+                    log_info("🧠 Polaris em modo executivo.", session_id=session_id)
                     yield "data: [EXEC_MODE]\n\n"
                     yield "data: [DONE]\n\n"
                     return
@@ -616,14 +627,12 @@ async def inference_stream(prompt: str = Form(...), session_id: str = Form("defa
                     try:
                         resposta_com_id = injetar_session_id(resposta_completa, session_id)
                         vectorstore.add_texts(texts=[resposta_com_id], metadatas=[{"session_id": session_id}])
-                        log_success(f"🧠 Resposta registrada no ChromaDB", session_id=session_id)
                     except Exception as e:
                         log_error(f"Erro ao salvar resposta no ChromaDB: {e}", session_id=session_id)
 
                 duration = time.time() - start_time
                 log_request(session_id, prompt, resposta_completa, duration, "groq-streaming")
 
-                # Fim da resposta
                 yield "data: [DONE]\n\n"
 
             except Exception as e:
@@ -643,8 +652,7 @@ async def inference_stream(prompt: str = Form(...), session_id: str = Form("defa
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Cache-Control",
+            "X-Accel-Buffering": "no",
         }
     )
 
@@ -754,7 +762,7 @@ async def upload_pdf(
 
 # Endpoints de Autenticação
 @app.post("/auth/token")
-async def get_token(client_name: str = Form(...), client_secret: str = Form(...)):
+async def get_token(client_name: str, client_secret: str):
     """Endpoint para obter token de API"""
     # Lista simples de clientes autorizados (em produção, use banco de dados)
     authorized_clients = {

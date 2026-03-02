@@ -15,3 +15,5 @@ terraform.*
 *.terraform*
 terraform
 models/
+.claude/
+.venv/

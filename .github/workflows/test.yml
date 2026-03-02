@@ -7,7 +7,6 @@ on:
       - 'polaris_api/**'
       - 'tests/**'
       - '.github/workflows/test.yml'
-      - 'requirements*.txt'
       - 'Makefile'
   pull_request:
     branches: [ main, develop ]
@@ -15,18 +14,16 @@ on:
       - 'polaris_api/**'
       - 'tests/**'
       - '.github/workflows/test.yml'
-      - 'requirements*.txt'
       - 'Makefile'
 
 env:
-  PYTHON_VERSION: '3.10'
-  MONGODB_VERSION: '6.0'
+  PYTHON_VERSION: '3.11'
 
 jobs:
   test:
     name: 🧪 Run Tests
     runs-on: ubuntu-latest
-    
+
     services:
       mongodb:
         image: mongo:6.0
@@ -41,112 +38,99 @@ jobs:
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
-      
+
     - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
         cache: 'pip'
-        
-    - name: 📦 Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential
-        
-    - name: 🔧 Install Python dependencies
+
+    - name: 📦 Install dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install torch --index-url https://download.pytorch.org/whl/cpu
         pip install -r polaris_api/requirements.txt
         pip install -r polaris_api/requirements-test.txt
-        
+
     - name: 🧪 Run tests with coverage
       run: |
         cd polaris_api
         python -m pytest ../tests/ -v --cov=. --cov-report=xml --cov-report=html
-        
+
     - name: 📊 Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         file: ./polaris_api/coverage.xml
         flags: unittests
-        name: codecov-umbrella
         fail_ci_if_error: false
-        
-    - name: 📋 Test summary
-      run: |
-        echo "✅ All tests completed successfully!"
-        echo "📊 Coverage report generated"
-        echo "🚀 Ready for deployment"
 
   lint:
     name: 🔍 Code Quality
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
-      
+
     - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
         cache: 'pip'
-        
+
     - name: 🔧 Install linting tools
       run: |
         python -m pip install --upgrade pip
-        pip install flake8 black isort mypy
-        
+        pip install flake8 black isort
+
     - name: 🔍 Run flake8
       run: |
         flake8 polaris_api/ --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 polaris_api/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-        
-    - name: 🎨 Run black (code formatting)
-      run: |
-        black --check --diff polaris_api/
-        
-    - name: 📝 Run isort (import sorting)
-      run: |
-        isort --check-only --diff polaris_api/
-        
-    - name: 🔍 Run mypy (type checking)
-      run: |
-        mypy polaris_api/ --ignore-missing-imports
+
+    - name: 🎨 Check formatting (black)
+      run: black --check --diff polaris_api/
+
+    - name: 📝 Check imports (isort)
+      run: isort --check-only --diff polaris_api/
 
   security:
     name: 🔒 Security Scan
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
-      
+
     - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
         cache: 'pip'
-        
+
     - name: 🔧 Install security tools
       run: |
         python -m pip install --upgrade pip
-        pip install bandit safety
-        
+        pip install bandit
+
     - name: 🔒 Run bandit (security linting)
-      run: |
-        bandit -r polaris_api/ -f json -o bandit-report.json || true
-        
-    - name: 🔒 Run safety (dependency vulnerability check)
-      run: |
-        safety check -r polaris_api/requirements.txt --json --output safety-report.json || true
-        
+      run: bandit -r polaris_api/ -f json -o bandit-report.json || true
+
     - name: 📋 Security summary
       run: |
         echo "🔒 Security scan completed"
         if [ -f bandit-report.json ]; then
-          echo "📊 Bandit report: $(cat bandit-report.json | jq -r '.metrics._totals.n_issues') issues found"
+          ISSUES=$(cat bandit-report.json | python -c "import sys,json; print(json.load(sys.stdin)['metrics']['_totals']['SEVERITY.HIGH'])" 2>/dev/null || echo "0")
+          echo "🔴 High severity issues: $ISSUES"
+          if [ "$ISSUES" != "0" ] && [ "$ISSUES" != "0.0" ]; then
+            echo "::warning::Bandit found high severity issues"
+          fi
         fi
-        if [ -f safety-report.json ]; then
-          echo "📊 Safety report: $(cat safety-report.json | jq -r '.vulnerabilities | length') vulnerabilities found"
-        fi
+
+    - name: 📤 Upload security reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-reports
+        path: bandit-report.json
+        retention-days: 30

@@ -1,29 +1,58 @@
-# Variáveis de ambiente...
 DEPLOY_PATH := $(shell pwd)
-PYTHON := python3
-PIP := pip3
+VENV_DIR := $(DEPLOY_PATH)/.venv
+PYTHON := $(VENV_DIR)/bin/python3
+PIP := $(VENV_DIR)/bin/pip3
 MODEL_DIR := $(DEPLOY_PATH)/models
-MODEL_URL := https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf?download=true  # Exemplo de URL
+MODEL_URL := https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf?download=true
 
 # ------------------------------------------------------------------------------------------
-# 🛠️ Configuração inicial...
+# 🐍 Criar virtualenv
+# ------------------------------------------------------------------------------------------
+.PHONY: venv
+venv:
+	@if [ ! -d "$(VENV_DIR)" ]; then \
+		echo "🐍 Criando virtualenv em $(VENV_DIR)..."; \
+		python3 -m venv $(VENV_DIR); \
+		echo "✅ Virtualenv criada!"; \
+	else \
+		echo "✅ Virtualenv já existe."; \
+	fi
+	$(PIP) install --upgrade pip
+
+# ------------------------------------------------------------------------------------------
+# 🛠️ Configuração inicial
 # ------------------------------------------------------------------------------------------
 .PHONY: setup
 setup:
 	@echo "📦 Instalando dependências globais..."
-	sudo apt update && sudo apt install -y python3-pip jq wget
-	$(PIP) install --upgrade pip
+	sudo apt update && sudo apt install -y python3-pip python3-venv jq wget
 	@echo "✅ Setup inicial concluído!"
 
 # ------------------------------------------------------------------------------------------
-# 📦 Instalar dependências do projeto.
+# 📦 Instalar dependências do projeto
+# ------------------------------------------------------------------------------------------
+# install-cpu: PyTorch CPU-only (~200MB) - para servidores sem GPU
+# install-gpu: PyTorch com CUDA (~2GB+) - para servidores com GPU NVIDIA
+# install:     alias para install-cpu (padrão seguro)
 # ------------------------------------------------------------------------------------------
 .PHONY: install
-install:
-	@echo "📦 Instalando dependências do projeto..."
+install: install-cpu
+
+.PHONY: install-cpu
+install-cpu: venv
+	@echo "📦 Instalando dependências (modo CPU)..."
+	$(PIP) install torch --index-url https://download.pytorch.org/whl/cpu
 	$(PIP) install -r polaris_api/requirements.txt
 	$(PIP) install -r polaris_integrations/requirements.txt
-	@echo "✅ Dependências instaladas!"
+	@echo "✅ Dependências instaladas (CPU-only)!"
+
+.PHONY: install-gpu
+install-gpu: venv
+	@echo "📦 Instalando dependências (modo GPU/CUDA)..."
+	$(PIP) install torch
+	$(PIP) install -r polaris_api/requirements.txt
+	$(PIP) install -r polaris_integrations/requirements.txt
+	@echo "✅ Dependências instaladas (GPU/CUDA)!"
 
 # ------------------------------------------------------------------------------------------
 # 🤖 Baixar modelo LLaMA 3
@@ -41,7 +70,7 @@ download-model:
 .PHONY: start-db
 start-db:
 	@echo "🐳 Iniciando MongoDB e Mongo Express..."
-	cd polaris_setup/ && mongodb-compose up -d
+	cd polaris_setup/ && docker compose -f mongodb-compose.yml up -d
 	@echo "✅ MongoDB e Mongo Express rodando!"
 
 # ------------------------------------------------------------------------------------------
@@ -50,7 +79,7 @@ start-db:
 .PHONY: stop-db
 stop-db:
 	@echo "🛑 Parando MongoDB e Mongo Express..."
-	cd polaris_setup/ && mongodb-compose down
+	cd polaris_setup/ && docker compose -f mongodb-compose.yml down
 	@echo "✅ MongoDB e Mongo Express parados!"
 
 # ------------------------------------------------------------------------------------------
@@ -59,21 +88,10 @@ stop-db:
 .PHONY: restart-db
 restart-db:
 	@echo "🔄 Reiniciando MongoDB e Mongo Express..."
-	make stop-db
+	$(MAKE) stop-db
 	sleep 2
-	make start-db
+	$(MAKE) start-db
 	@echo "✅ Banco de dados reiniciado!"
-
-# ------------------------------------------------------------------------------------------
-# 🔄 Rodar tudo incluindo banco de dados
-# ------------------------------------------------------------------------------------------
-.PHONY: start-all
-start-all:
-	@echo "🔄 Iniciando tudo..."
-	make start-db
-	make start-api &
-	make start-bot &
-	@echo "✅ Todos os serviços iniciados!"
 
 # ------------------------------------------------------------------------------------------
 # 🚀 Rodar API
@@ -81,8 +99,7 @@ start-all:
 .PHONY: start-api
 start-api:
 	@echo "🚀 Iniciando API..."
-	cd polaris_api && $(PYTHON) main.py
-	@echo "✅ API rodando!"
+	cd polaris_api && $(PYTHON) polaris_main.py
 
 # ------------------------------------------------------------------------------------------
 # 🤖 Rodar Polaris Integrations
@@ -97,19 +114,39 @@ start-integrations:
 		echo "⚠️  .env do Polaris Integrations não encontrado!"; \
 		exit 1; \
 	fi
-	sudo apt install -y ffmpeg
 	cd polaris_integrations && $(PYTHON) main.py
-	@echo "✅ Polaris Integrations rodando!"
-
 
 # ------------------------------------------------------------------------------------------
-# 🌍 Configurar Ngrok + Webhook Telegram
+# 🔄 Rodar tudo
 # ------------------------------------------------------------------------------------------
-.PHONY: setup-ngrok
-setup-ngrok:
-	@echo "🌐 Configurando Ngrok..."
-	bash polaris_setup/setup_ngrok.sh
-	@echo "✅ Ngrok e Webhook do Telegram configurados!"
+.PHONY: start-all
+start-all:
+	@echo "🔄 Iniciando tudo..."
+	$(MAKE) start-db
+	$(MAKE) start-api &
+	$(MAKE) start-integrations &
+	@echo "✅ Todos os serviços iniciados!"
+
+# ------------------------------------------------------------------------------------------
+# 🛑 Parar todos os processos
+# ------------------------------------------------------------------------------------------
+.PHONY: stop-all
+stop-all:
+	@echo "🛑 Parando todos os serviços..."
+	@pkill -f "python3 polaris_main.py" || true
+	@pkill -f "python3 main.py" || true
+	@echo "✅ Todos os processos parados!"
+
+# ------------------------------------------------------------------------------------------
+# 🔄 Reiniciar tudo
+# ------------------------------------------------------------------------------------------
+.PHONY: restart-all
+restart-all:
+	@echo "🔄 Reiniciando tudo..."
+	$(MAKE) stop-all
+	sleep 2
+	$(MAKE) start-all
+	@echo "✅ Tudo reiniciado!"
 
 # ------------------------------------------------------------------------------------------
 # 📝 Criar .env da API se não existir
@@ -139,60 +176,13 @@ setup-prod-env:
 	@echo "✅ .env da API configurado para produção!"
 
 # ------------------------------------------------------------------------------------------
-# 🧪 Testes
-.PHONY: test
-test:
-	@echo "🧪 Executando testes unitários..."
-	@cd polaris_api && python3 -m pytest ../tests/ -v
-
-.PHONY: test-cov
-test-cov:
-	@echo "📊 Executando testes com cobertura..."
-	@cd polaris_api && python3 -m pytest ../tests/ --cov=. --cov-report=term-missing
-
-.PHONY: test-watch
-test-watch:
-	@echo "👀 Executando testes em modo watch..."
-	@cd polaris_api && python3 -m pytest ../tests/ -f -v
-
-.PHONY: install-test-deps
-install-test-deps:
-	@echo "📦 Instalando dependências de teste..."
-	@cd polaris_api && pip3 install -r requirements-test.txt
-
-.PHONY: test-ci
-test-ci:
-	@echo "🚀 Executando testes para CI/CD..."
-	@cd polaris_api && python3 -m pytest ../tests/ -v --cov=. --cov-report=xml --cov-report=html
-
-.PHONY: ci-check
-ci-check:
-	@echo "🔍 Verificando qualidade do código..."
-	@echo "📝 Verificando formatação..."
-	@black --check polaris_api/ || echo "⚠️ Black não encontrado, pulando..."
-	@echo "📋 Verificando imports..."
-	@isort --check-only polaris_api/ || echo "⚠️ isort não encontrado, pulando..."
-	@echo "🔍 Verificando linting..."
-	@flake8 polaris_api/ --max-line-length=127 --max-complexity=10 || echo "⚠️ flake8 não encontrado, pulando..."
-	@echo "🔒 Verificando segurança..."
-	@bandit -r polaris_api/ -f json -o bandit-report.json || echo "⚠️ bandit não encontrado, pulando..."
-	@echo "✅ Verificações de qualidade concluídas!"
-
-.PHONY: ci-full
-ci-full:
-	@echo "🚀 Executando pipeline completo de CI..."
-	$(MAKE) test-ci
-	$(MAKE) ci-check
-	@echo "🎉 Pipeline de CI concluído com sucesso!"
-
-# ------------------------------------------------------------------------------------------
 # 📝 Criar .env do Polaris Integrations se não existir
 # ------------------------------------------------------------------------------------------
 .PHONY: create-env-integrations
 create-env-integrations:
 	@echo "📝 Verificando .env do Polaris Integrations..."
 	@if [ ! -f polaris_integrations/.env ]; then \
-		echo "⚠️  .env do Bot não encontrado! Criando um novo..."; \
+		echo "⚠️  .env do Integrations não encontrado! Criando um novo..."; \
 		touch polaris_integrations/.env; \
 		echo "TELEGRAM_TOKEN=\"0000000000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"" >> polaris_integrations/.env; \
 		echo "POLARIS_API_URL=\"http://192.168.2.48:8000/inference/\"" >> polaris_integrations/.env; \
@@ -201,12 +191,9 @@ create-env-integrations:
 		echo "✅ .env do Polaris Integrations já existe!"; \
 	fi
 
-
 # ------------------------------------------------------------------------------------------
 # 🌐 Configuração do Ngrok e Webhook do Telegram
 # ------------------------------------------------------------------------------------------
-
-# 🌍 Iniciar o Ngrok e configurar o Webhook do Telegram (executa o script com variáveis exportadas)
 .PHONY: setup-ngrok
 setup-ngrok:
 	@echo "🌐 Exportando variáveis e iniciando Ngrok..."
@@ -216,53 +203,86 @@ setup-ngrok:
 		bash polaris_setup/scripts/setup_ngrok.sh; \
 		echo "✅ Ngrok e Webhook configurados!"; \
 	else \
-		echo "⚠️ .env do Polaris Integrations não encontrado! Certifique-se de rodar 'make create-env-bot' primeiro."; \
+		echo "⚠️ .env do Polaris Integrations não encontrado! Rode 'make create-env-integrations' primeiro."; \
 		exit 1; \
 	fi
 
-# 🛑 Parar Ngrok
 .PHONY: stop-ngrok
 stop-ngrok:
 	@echo "🛑 Parando Ngrok..."
 	@pkill -f ngrok || true
 	@echo "✅ Ngrok parado!"
 
-# 🔄 Reiniciar Ngrok
 .PHONY: restart-ngrok
 restart-ngrok:
 	@echo "🔄 Reiniciando Ngrok..."
-	make stop-ngrok
+	$(MAKE) stop-ngrok
 	sleep 2
-	make setup-ngrok
+	$(MAKE) setup-ngrok
 	@echo "✅ Ngrok reiniciado!"
 
+# ------------------------------------------------------------------------------------------
+# 🧪 Testes
+# ------------------------------------------------------------------------------------------
+.PHONY: test
+test:
+	@echo "🧪 Executando testes unitários..."
+	@cd polaris_api && $(PYTHON) -m pytest ../tests/ -v
+
+.PHONY: test-cov
+test-cov:
+	@echo "📊 Executando testes com cobertura..."
+	@cd polaris_api && $(PYTHON) -m pytest ../tests/ --cov=. --cov-report=term-missing
+
+.PHONY: test-watch
+test-watch:
+	@echo "👀 Executando testes em modo watch..."
+	@cd polaris_api && $(PYTHON) -m pytest ../tests/ -f -v
+
+.PHONY: install-test-deps
+install-test-deps: venv
+	@echo "📦 Instalando dependências de teste..."
+	$(PIP) install -r polaris_api/requirements-test.txt
+
+.PHONY: test-ci
+test-ci:
+	@echo "🚀 Executando testes para CI/CD..."
+	@cd polaris_api && $(PYTHON) -m pytest ../tests/ -v --cov=. --cov-report=xml --cov-report=html
 
 # ------------------------------------------------------------------------------------------
-# 🔄 Rodar tudo
+# 🔍 Qualidade de código (local)
 # ------------------------------------------------------------------------------------------
-.PHONY: start-all
-start-all:
-	@echo "🔄 Iniciando tudo..."
-	make start-api &
-	make start-bot &
-	@echo "✅ Todos os serviços iniciados!"
+.PHONY: lint
+lint: _check-lint-tools
+	@echo "🔍 Verificando qualidade do código..."
+	flake8 polaris_api/ --max-line-length=127 --max-complexity=10
+	black --check --diff polaris_api/
+	isort --check-only --diff polaris_api/
+	@echo "✅ Código OK!"
 
-# -----------------------------------------------------------------------------------------
-# 🛑 Parar todos os processos
-# -----------------------------------------------------------------------------------------
-.PHONY: stop-all
-stop-all:
-	@echo "🛑 Parando todos os serviços..."
-	pkill -f "python3 main.py"
-	@echo "✅ Todos os processos parados!"
+.PHONY: lint-fix
+lint-fix: _check-lint-tools
+	@echo "🔧 Formatando código..."
+	black polaris_api/
+	isort polaris_api/
+	@echo "✅ Código formatado!"
 
-# ------------------------------------------------------------------------------------------
-# 🔄 Reiniciar tudo
-# ------------------------------------------------------------------------------------------
-.PHONY: restart-all
-restart-all:
-	@echo "🔄 Reiniciando tudo..."
-	make stop-all
-	sleep 2
-	make start-all
-	@echo "✅ API e Polaris Integrations reiniciados!"
+.PHONY: security
+security:
+	@echo "🔒 Verificando segurança..."
+	bandit -r polaris_api/ -ll
+	@echo "✅ Scan de segurança concluído!"
+
+.PHONY: _check-lint-tools
+_check-lint-tools:
+	@which flake8 > /dev/null 2>&1 || (echo "⚠️  Instale as ferramentas: $(PIP) install flake8 black isort" && exit 1)
+	@which black > /dev/null 2>&1  || (echo "⚠️  Instale as ferramentas: $(PIP) install flake8 black isort" && exit 1)
+	@which isort > /dev/null 2>&1  || (echo "⚠️  Instale as ferramentas: $(PIP) install flake8 black isort" && exit 1)
+
+.PHONY: ci
+ci:
+	@echo "🚀 Executando pipeline completo..."
+	$(MAKE) lint
+	$(MAKE) test-ci
+	$(MAKE) security
+	@echo "🎉 Pipeline concluído com sucesso!"
