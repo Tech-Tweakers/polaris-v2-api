@@ -18,13 +18,6 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-from TTS.api import TTS
-from torch.serialization import add_safe_globals
-from TTS.tts.configs.xtts_config import XttsConfig
-from TTS.tts.models.xtts import XttsAudioConfig
-from TTS.tts.models.xtts import XttsArgs
-from TTS.config.shared_configs import BaseDatasetConfig
-
 from fastapi import FastAPI, UploadFile, Form
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,10 +36,8 @@ from fastapi.responses import Response
 
 log_error = logging.error
 
-add_safe_globals([XttsConfig, XttsAudioConfig, BaseDatasetConfig, XttsArgs])
 load_dotenv()
 
-COQUI_SPEAKER_WAV = os.getenv("COQUI_SPEAKER_WAV", "polaris-voice.wav")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 POLARIS_API_URL = os.getenv("POLARIS_API_URL", "http://192.168.1.104:8000/inference/")
 
@@ -83,15 +74,22 @@ log.info("🧠 Carregando modelo Whisper...")
 whisper = WhisperModel("small", compute_type="int8")
 
 TTS_ENGINE = os.getenv("TTS_ENGINE", "coqui").lower()
-tts = None
 
 if TTS_ENGINE == "coqui":
-    log.info("🗣️  Carregando modelo TTS local (Coqui XTTS)...")
-    tts = TTS(
-        model_name="tts_models/multilingual/multi-dataset/xtts_v2",
-        progress_bar=False,
-        gpu=False,
-    )
+    try:
+        from TTS.api import TTS
+        from torch.serialization import add_safe_globals
+        from TTS.tts.configs.xtts_config import XttsConfig
+        from TTS.tts.models.xtts import XttsAudioConfig
+        from TTS.tts.models.xtts import XttsArgs
+        from TTS.config.shared_configs import BaseDatasetConfig
+
+        add_safe_globals([XttsConfig, XttsAudioConfig, BaseDatasetConfig, XttsArgs])
+        log.info("🗣️  Carregando modelo TTS local (Coqui XTTS)...")
+    except ImportError as e:
+        log.error(f"❌ TTS_ENGINE=coqui mas dependências não instaladas: {e}")
+        log.error("💡 Instale com: pip install TTS torch torchaudio --index-url https://download.pytorch.org/whl/cpu")
+        raise
 else:
     log.info(f"🗣️  TTS local desativado. Engine selecionada: {TTS_ENGINE.upper()}")
 

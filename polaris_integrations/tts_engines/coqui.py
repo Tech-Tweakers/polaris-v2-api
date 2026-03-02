@@ -1,22 +1,30 @@
 import os
 import subprocess
 from moviepy.editor import AudioFileClip
-from TTS.api import TTS
-from torch.serialization import add_safe_globals
-from TTS.tts.configs.xtts_config import XttsConfig
-from TTS.tts.models.xtts import XttsAudioConfig
-from TTS.tts.models.xtts import XttsArgs
-from TTS.config.shared_configs import BaseDatasetConfig
-
-add_safe_globals([XttsConfig, XttsAudioConfig, BaseDatasetConfig, XttsArgs])
 
 COQUI_SPEAKER_WAV = os.getenv("COQUI_SPEAKER_WAV", "polaris-voice.wav")
 
-tts = TTS(
-    model_name="tts_models/multilingual/multi-dataset/xtts_v2",
-    progress_bar=False,
-    gpu=False,
-)
+# Lazy-loaded: modelo é carregado na primeira chamada
+_tts = None
+
+
+def _get_tts():
+    global _tts
+    if _tts is None:
+        from TTS.api import TTS
+        from torch.serialization import add_safe_globals
+        from TTS.tts.configs.xtts_config import XttsConfig
+        from TTS.tts.models.xtts import XttsAudioConfig
+        from TTS.tts.models.xtts import XttsArgs
+        from TTS.config.shared_configs import BaseDatasetConfig
+
+        add_safe_globals([XttsConfig, XttsAudioConfig, BaseDatasetConfig, XttsArgs])
+        _tts = TTS(
+            model_name="tts_models/multilingual/multi-dataset/xtts_v2",
+            progress_bar=False,
+            gpu=False,
+        )
+    return _tts
 
 
 def limpar_texto(texto: str) -> str:
@@ -33,7 +41,7 @@ def tts_coqui(texto: str, output_path: str) -> str:
     wav_temp = output_path.replace(".mp3", ".wav")
     wav_clean = output_path.replace(".mp3", "_clean.wav")
 
-    tts.tts_to_file(
+    _get_tts().tts_to_file(
         text=limpar_texto(texto),
         speaker_wav=COQUI_SPEAKER_WAV,
         language="pt",
