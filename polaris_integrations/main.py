@@ -36,7 +36,7 @@ from fastapi.responses import Response
 
 log_error = logging.error
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 POLARIS_API_URL = os.getenv("POLARIS_API_URL", "http://192.168.1.104:8000/inference/")
