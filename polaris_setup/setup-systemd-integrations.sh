@@ -42,6 +42,7 @@ RestartSec=5
 StandardOutput=journal
 StandardError=journal
 Environment=PYTHONUNBUFFERED=1
+Environment=COQUI_TOS_AGREED=1
 
 [Install]
 WantedBy=multi-user.target
