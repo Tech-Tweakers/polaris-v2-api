@@ -26,6 +26,7 @@ from polaris_logger import (
     log_error,
     log_request,
     log_request_error,
+    log_prompt,
 )
 from auth import jwt_auth, log_auth_attempt
 from prometheus_client import (
@@ -79,12 +80,12 @@ inference_failures = Counter(
     registry=registry,
 )
 
-LOG_FILE = "polaris.log"
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler(LOG_FILE, encoding="utf-8"), logging.StreamHandler()],
-)
+# Logging configurado centralmente em polaris_logger.py
+# Silencia loggers de terceiros que poluem o output
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("chromadb").setLevel(logging.WARNING)
+logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
 
 load_dotenv()
 
@@ -420,7 +421,9 @@ async def inference(
                 log_info(
                     f"📚 {len(retrieved_docs)} trechos relevantes encontrados no vectorstore."
                 )
-                docs_context = f"📚 Conteúdo relevante dos documentos:\n{docs_context}\n\n"
+                docs_context = (
+                    f"📚 Conteúdo relevante dos documentos:\n{docs_context}\n\n"
+                )
             else:
                 docs_context = ""
                 log_info("📚 Nenhum documento relevante encontrado no vectorstore.")
@@ -455,6 +458,8 @@ async def inference(
 <|start_header_id|>assistant<|end_header_id|>
 """
 
+    log_prompt("📏 Prompt construído para inferência", full_prompt, session_id=session_id)
+
     try:
         resposta = llm.invoke(full_prompt)
         duration = time.time() - start_time
@@ -485,7 +490,9 @@ async def inference(
                 vectorstore.add_texts(
                     texts=[resposta_com_id], metadatas=[{"session_id": session_id}]
                 )
-                log_success(f"🧠 Resposta registrada no ChromaDB", session_id=session_id)
+                log_success(
+                    f"🧠 Resposta registrada no ChromaDB", session_id=session_id
+                )
             except Exception as e:
                 log_error(
                     f"Erro ao salvar resposta no ChromaDB: {e}", session_id=session_id
@@ -518,7 +525,11 @@ async def inference(
 
 
 @app.post("/inference/stream/")
-async def inference_stream(prompt: str = Body(...), session_id: str = Body("default_session"), current_user: Optional[Dict] = Depends(jwt_auth.get_current_user)):
+async def inference_stream(
+    prompt: str = Body(...),
+    session_id: str = Body("default_session"),
+    current_user: Optional[Dict] = Depends(jwt_auth.get_current_user),
+):
     """Endpoint de streaming usando Server-Sent Events"""
 
     async def generate():
@@ -542,10 +553,16 @@ async def inference_stream(prompt: str = Body(...), session_id: str = Body("defa
                     retrieved_docs = vectorstore.similarity_search(
                         user_prompt, k=3, filter={"session_id": session_id}
                     )
-                    docs_context = "\n".join([doc.page_content for doc in retrieved_docs])
+                    docs_context = "\n".join(
+                        [doc.page_content for doc in retrieved_docs]
+                    )
                     if docs_context:
-                        log_info(f"📚 {len(retrieved_docs)} trechos relevantes encontrados no vectorstore.")
-                        docs_context = f"📚 Conteúdo relevante dos documentos:\n{docs_context}\n\n"
+                        log_info(
+                            f"📚 {len(retrieved_docs)} trechos relevantes encontrados no vectorstore."
+                        )
+                        docs_context = (
+                            f"📚 Conteúdo relevante dos documentos:\n{docs_context}\n\n"
+                        )
                     else:
                         docs_context = ""
                 except Exception as e:
@@ -558,7 +575,9 @@ async def inference_stream(prompt: str = Body(...), session_id: str = Body("defa
 
             context_pieces = []
             if mongo_memories:
-                context_pieces.append("Memória do Usuário:\n" + "\n".join(mongo_memories))
+                context_pieces.append(
+                    "Memória do Usuário:\n" + "\n".join(mongo_memories)
+                )
             if recent_memories:
                 context_pieces.append("Conversa recente:\n" + recent_memories)
 
@@ -577,11 +596,14 @@ async def inference_stream(prompt: str = Body(...), session_id: str = Body("defa
 <|start_header_id|>assistant<|end_header_id|>
 """
 
+            log_prompt("📏 Prompt construído para streaming", full_prompt, session_id=session_id)
+
             yield "data: [START]\n\n"
 
             # Streaming real: yield cada token conforme chega do Groq
             # stream_chunks() é síncrono — rodamos em thread pra não bloquear o event loop
             import queue
+
             chunk_queue = queue.Queue()
             SENTINEL = object()
 
@@ -610,30 +632,46 @@ async def inference_stream(prompt: str = Body(...), session_id: str = Body("defa
                         raise item
                     resposta_completa += item
                     # SSE data lines can't contain raw newlines — encode them
-                    safe_item = item.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
+                    safe_item = (
+                        item.replace("\r\n", "\\n")
+                        .replace("\n", "\\n")
+                        .replace("\r", "\\n")
+                    )
                     yield f"data: {safe_item}\n\n"
 
                 if "shellPolaris" in resposta_completa:
                     if VECTORSTORE_ENABLED:
                         comando = injetar_session_id(resposta_completa, session_id)
-                        vectorstore.add_texts(texts=[comando], metadatas=[{"session_id": session_id}])
+                        vectorstore.add_texts(
+                            texts=[comando], metadatas=[{"session_id": session_id}]
+                        )
                     log_info("🧠 Polaris em modo executivo.", session_id=session_id)
                     yield "data: [EXEC_MODE]\n\n"
                     yield "data: [DONE]\n\n"
                     return
 
                 # Salva na memória e vectorstore
-                save_to_langchain_memory(user_prompt, resposta_completa, session_id)
+                await save_to_langchain_memory(user_prompt, resposta_completa, session_id)
 
                 if VECTORSTORE_ENABLED:
                     try:
-                        resposta_com_id = injetar_session_id(resposta_completa, session_id)
-                        vectorstore.add_texts(texts=[resposta_com_id], metadatas=[{"session_id": session_id}])
+                        resposta_com_id = injetar_session_id(
+                            resposta_completa, session_id
+                        )
+                        vectorstore.add_texts(
+                            texts=[resposta_com_id],
+                            metadatas=[{"session_id": session_id}],
+                        )
                     except Exception as e:
-                        log_error(f"Erro ao salvar resposta no ChromaDB: {e}", session_id=session_id)
+                        log_error(
+                            f"Erro ao salvar resposta no ChromaDB: {e}",
+                            session_id=session_id,
+                        )
 
                 duration = time.time() - start_time
-                log_request(session_id, prompt, resposta_completa, duration, "groq-streaming")
+                log_request(
+                    session_id, prompt, resposta_completa, duration, "groq-streaming"
+                )
 
                 yield "data: [DONE]\n\n"
 
@@ -655,7 +693,7 @@ async def inference_stream(prompt: str = Body(...), session_id: str = Body("defa
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-        }
+        },
     )
 
 

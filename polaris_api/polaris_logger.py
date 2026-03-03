@@ -13,25 +13,19 @@ class StructuredLogger:
     def __init__(self):
         self.logger = logging.getLogger("polaris")
         self.logger.setLevel(logging.INFO)
+        self.logger.propagate = False  # Evita duplicação com o root logger
 
-        # Handler para arquivo
+        # Limpa handlers existentes para evitar duplicação em reloads
+        self.logger.handlers.clear()
+
+        # Handler para arquivo (JSON estruturado)
         file_handler = logging.FileHandler("polaris.log", encoding="utf-8")
         file_handler.setLevel(logging.INFO)
-
-        # Handler para console
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-
-        # Formatter simples
-        formatter = logging.Formatter(
+        file_formatter = logging.Formatter(
             "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
         )
-
-        file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
-
+        file_handler.setFormatter(file_formatter)
         self.logger.addHandler(file_handler)
-        self.logger.addHandler(console_handler)
 
     def _log_structured(
         self,
@@ -39,15 +33,24 @@ class StructuredLogger:
         message: str,
         session_id: Optional[str] = None,
         duration: Optional[float] = None,
+        prompt_chars: Optional[int] = None,
+        prompt_tokens_est: Optional[int] = None,
     ):
         """Log simplificado com contexto essencial"""
-        log_data = {
+        log_data: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "level": level.upper(),
             "message": message,
-            "session_id": session_id,
-            "duration_ms": round(duration * 1000, 2) if duration else None,
         }
+
+        if session_id:
+            log_data["session_id"] = session_id
+        if duration is not None:
+            log_data["duration_ms"] = round(duration * 1000, 2)
+        if prompt_chars is not None:
+            log_data["prompt_chars"] = prompt_chars
+        if prompt_tokens_est is not None:
+            log_data["prompt_tokens_est"] = prompt_tokens_est
 
         # Mapear níveis customizados para níveis padrão do logging
         level_mapping = {
@@ -63,7 +66,7 @@ class StructuredLogger:
             json.dumps(log_data, ensure_ascii=False),
         )
 
-        # Log colorido para console (simplificado)
+        # Log colorido para console com timestamp
         color_map = {
             "info": Fore.LIGHTCYAN_EX,
             "success": Fore.GREEN,
@@ -72,21 +75,26 @@ class StructuredLogger:
         }
 
         color = color_map.get(level, Fore.WHITE)
-        emoji_map = {"info": "🔹", "success": "✅", "warning": "⚠️", "error": "❌"}
-
-        emoji = emoji_map.get(level, "📝")
-        console_msg = f"{color}{emoji} {message}{Style.RESET_ALL}"
+        ts = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        console_msg = f"{Fore.LIGHTBLACK_EX}{ts}{Style.RESET_ALL} {color}{message}{Style.RESET_ALL}"
 
         if session_id:
-            console_msg += f" [Session: {session_id}]"
+            console_msg += f" {Fore.LIGHTBLACK_EX}[{session_id[:8]}]{Style.RESET_ALL}"
         if duration:
-            console_msg += f" [{duration:.2f}s]"
+            console_msg += f" {Fore.LIGHTBLACK_EX}[{duration:.2f}s]{Style.RESET_ALL}"
+        if prompt_chars is not None:
+            console_msg += f" {Fore.LIGHTBLACK_EX}[{prompt_chars}ch ~{prompt_tokens_est}tk]{Style.RESET_ALL}"
 
         print(console_msg)
 
 
 # Instância global do logger
 logger = StructuredLogger()
+
+
+def estimate_tokens(text: str) -> int:
+    """Estimativa de tokens (~4 chars por token para português/inglês)."""
+    return max(1, len(text) // 4)
 
 
 def log_info(
@@ -117,6 +125,20 @@ def log_error(
     logger._log_structured("error", message, session_id, duration)
 
 
+def log_prompt(
+    message: str,
+    prompt: str,
+    session_id: Optional[str] = None,
+):
+    """Log do tamanho do prompt enviado ao LLM"""
+    chars = len(prompt)
+    tokens_est = estimate_tokens(prompt)
+    logger._log_structured(
+        "info", message, session_id,
+        prompt_chars=chars, prompt_tokens_est=tokens_est,
+    )
+
+
 def log_request(
     session_id: str,
     prompt: str,
@@ -124,35 +146,21 @@ def log_request(
     duration: float,
     model_used: str = "unknown",
 ):
-    """Log simplificado para requests de inferência"""
-    log_success(
-        f"Inference completed - Model: {model_used}",
+    """Log para requests de inferência com tamanho do prompt e resposta"""
+    prompt_chars = len(prompt)
+    prompt_tokens = estimate_tokens(prompt)
+    response_chars = len(response)
+    response_tokens = estimate_tokens(response)
+    logger._log_structured(
+        "success",
+        f"Inference completed - Model: {model_used} | Prompt: {prompt_chars}ch ~{prompt_tokens}tk | Response: {response_chars}ch ~{response_tokens}tk",
         session_id=session_id,
         duration=duration,
+        prompt_chars=prompt_chars,
+        prompt_tokens_est=prompt_tokens,
     )
 
 
 def log_request_error(session_id: str, prompt: str, error: str, duration: float):
-    """Log simplificado para erros de inferência"""
+    """Log para erros de inferência"""
     log_error(f"Inference failed: {error}", session_id=session_id, duration=duration)
-
-
-# Funções de compatibilidade para manter o código existente
-def log_info_simple(message: str):
-    """Versão simples para compatibilidade"""
-    log_info(message)
-
-
-def log_success_simple(message: str):
-    """Versão simples para compatibilidade"""
-    log_success(message)
-
-
-def log_warning_simple(message: str):
-    """Versão simples para compatibilidade"""
-    log_warning(message)
-
-
-def log_error_simple(message: str):
-    """Versão simples para compatibilidade"""
-    log_error(message)

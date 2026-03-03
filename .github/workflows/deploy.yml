@@ -1,43 +1,257 @@
-name: 🚀 Deploy Polaris API
+name: 🚀 Polaris - Version & Deploy
 
 on:
-  workflow_run:
-    workflows: ["🧪 Test Polaris API"]
-    types:
-      - completed
-    branches: [main]
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
 
 jobs:
-  deploy:
-    name: 🚀 Deploy to Production
+  semantic-version:
+    name: 🏷️ Gerar versão semântica
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-
+    outputs:
+      version: ${{ steps.semantic_version.outputs.version }}
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
+      - name: 📥 Checkout do código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: 🔄 Buscar todas as tags
+        run: git fetch --tags --force
 
-    # TODO: Adicionar steps reais de deploy quando a infra estiver pronta.
-    # Exemplos: SSH no servidor, docker build+push, ou sync de arquivos.
-    #
-    # - name: 🔑 Setup SSH
-    #   uses: webfactory/ssh-agent@v0.9.0
-    #   with:
-    #     ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
-    #
-    # - name: 🚀 Deploy via SSH
-    #   run: |
-    #     ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'EOF'
-    #       cd /polaris-prod/polaris-v2-api
-    #       git pull origin main
-    #       make install-cpu
-    #       make restart-all
-    #     EOF
+      - name: 🔎 Exibir mensagens de commit recentes
+        run: git log --oneline -n 10
 
-    - name: 🔔 Deployment summary
-      run: |
-        echo "🎉 Pipeline completed successfully!"
-        echo "📅 Timestamp: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-        echo "🔗 Commit: ${{ github.sha }}"
-        echo "👤 Author: ${{ github.actor }}"
-        echo "⚠️  Deploy automático ainda não configurado — executar manualmente no servidor."
+      - name: 🔖 Gerar nova versão semântica
+        id: semantic_version
+        uses: paulhatch/semantic-version@v5.3.0
+        with:
+          tag_prefix: "v"
+          major_pattern: "(BREAKING CHANGE|major:)"
+          minor_pattern: "(feat:|minor:)"
+          change_path: "."
+          version_format: "${major}.${minor}.${patch}"
+          debug: true
+
+          # 🔧 Acrescentados abaixo
+          bump_each_commit: true               # garante versão mesmo com --allow-empty
+          search_commit_body: true             # permite BREAKING CHANGE no corpo do commit
+
+      - name: 📌 Criar tag da versão
+        run: |
+          NEW_VERSION="v${{ steps.semantic_version.outputs.version }}"
+          echo "Nova versão calculada: ${NEW_VERSION}"
+
+          if git ls-remote --tags origin | grep -q "refs/tags/${NEW_VERSION}"; then
+            echo "🔹 A tag ${NEW_VERSION} já existe. Nada a fazer!"
+          else
+            git tag ${NEW_VERSION}
+            git push origin ${NEW_VERSION}
+            echo "✅ Nova versão ${NEW_VERSION} criada!"
+          fi
+
+  deploy:
+    name: 🚀 Deploy via Cloudflare Tunnel
+    needs: semantic-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout do código
+        uses: actions/checkout@v4
+
+      - name: 📥 Instalar Cloudflare Tunnel (cloudflared)
+        run: |
+          if ! command -v cloudflared &> /dev/null
+          then
+            echo "🔧 Instalando Cloudflare Tunnel..."
+            curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+            chmod +x cloudflared
+            sudo mv cloudflared /usr/local/bin/
+          fi
+          cloudflared --version
+
+      - name: 🔑 Configurar SSH via Cloudflare Tunnel
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" | tr -d '\r' > ~/.ssh/id_polaris
+          chmod 600 ~/.ssh/id_polaris
+          ssh-keygen -y -f ~/.ssh/id_polaris > ~/.ssh/id_polaris.pub
+          echo "Host cloudflare-ssh
+          HostName ${{ secrets.CLOUDFLARE_SSH_HOST }}
+          User ${{ secrets.SERVER_USER }}
+          IdentityFile ~/.ssh/id_polaris
+          StrictHostKeyChecking no
+          ProxyCommand cloudflared access ssh --hostname ${{ secrets.CLOUDFLARE_SSH_HOST }}" > ~/.ssh/config
+
+      - name: 🔄 Copiar Código Fonte
+        run: |
+          ssh -v -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              -o ProxyCommand="cloudflared access ssh --hostname ${{ secrets.CLOUDFLARE_SSH_HOST }}" \
+              -i ~/.ssh/id_polaris \
+              ${{ secrets.SERVER_USER }}@localhost "rm -rf /home/${{ secrets.SERVER_USER }}/polaris-prod && mkdir -p /home/${{ secrets.SERVER_USER }}/polaris-prod"
+
+          rsync -avz --progress --exclude=".git" -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ProxyCommand=\"cloudflared access ssh --hostname ${{ secrets.CLOUDFLARE_SSH_HOST }}\" -i ~/.ssh/id_polaris" . ${{ secrets.SERVER_USER }}@localhost:/home/${{ secrets.SERVER_USER }}/polaris-prod
+
+      - name: 📥 Iniciar MongoDB & Mongo Express
+        run: |
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              -o ProxyCommand="cloudflared access ssh --hostname ${{ secrets.CLOUDFLARE_SSH_HOST }}" \
+              -i ~/.ssh/id_polaris \
+              ${{ secrets.SERVER_USER }}@localhost <<EOF
+
+          set -e  # Interrompe o script se houver erro
+
+          echo "🚀 Acessando servidor..."
+          cd /home/${{ secrets.SERVER_USER }}/polaris-prod/polaris_setup
+
+          echo "📌 Instalando Docker..."
+          sudo apt install -y docker.io docker-compose
+          sudo systemctl start docker
+          sudo systemctl enable docker
+
+          echo "📌 Criando serviço systemd para o MongoDB..."
+          cat <<EOL | sudo tee /etc/systemd/system/polaris-mongodb.service > /dev/null
+          [Unit]
+          Description=Polaris MongoDB
+          After=network.target
+
+          [Service]
+          User=${{ secrets.SERVER_USER }}
+          WorkingDirectory=/home/${{ secrets.SERVER_USER }}/polaris-prod/polaris_setup
+          ExecStart=/usr/bin/docker-compose up -d
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+          EOL
+
+          echo "📌 Ativando e iniciando o serviço MongoDB..."
+          sudo systemctl daemon-reload
+          sudo systemctl enable polaris-mongodb
+          sudo systemctl restart polaris-mongodb
+
+          echo "✅ MongoDB configurado e rodando! 🚀"
+          EOF
+
+      - name: 🚀 Configurar Servidor e Rodar API
+        run: |
+          echo "📌 Reconfigurando SSH..."
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" | tr -d '\r' > ~/.ssh/id_polaris
+          chmod 600 ~/.ssh/id_polaris
+          ssh-keygen -y -f ~/.ssh/id_polaris > ~/.ssh/id_polaris.pub
+          echo "Host cloudflare-ssh
+          HostName ${{ secrets.CLOUDFLARE_SSH_HOST }}
+          User ${{ secrets.SERVER_USER }}
+          IdentityFile ~/.ssh/id_polaris
+          StrictHostKeyChecking no
+          ProxyCommand cloudflared access ssh --hostname ${{ secrets.CLOUDFLARE_SSH_HOST }}" > ~/.ssh/config
+
+          echo "📌 Testando conexão SSH..."
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              -o ProxyCommand="cloudflared access ssh --hostname ${{ secrets.CLOUDFLARE_SSH_HOST }}" \
+              -i ~/.ssh/id_polaris \
+              ${{ secrets.SERVER_USER }}@localhost "echo '🔥 Conexão estabelecida!'"
+
+          echo "📌 Configurando servidor e rodando API..."
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              -o ProxyCommand="cloudflared access ssh --hostname ${{ secrets.CLOUDFLARE_SSH_HOST }}" \
+              -i ~/.ssh/id_polaris \
+              ${{ secrets.SERVER_USER }}@localhost <<EOF
+
+          set -e  # Interrompe o script se houver erro
+
+          echo "🚀 Acessando servidor..."
+          cd /home/${{ secrets.SERVER_USER }}/polaris-prod
+          cp /home/${{ secrets.SERVER_USER }}/.env /home/${{ secrets.SERVER_USER }}/polaris-prod/polaris_api
+          ln -s /home/${{ secrets.SERVER_USER }}/Dev/models /home/${{ secrets.SERVER_USER }}/polaris-prod/models
+          echo "📌 Instalando dependências globais do Python..."
+          sudo apt update && sudo apt install -y python3-pip
+
+          echo "📌 Instalando pacotes Python..."
+          pip3 install --upgrade pip
+          pip3 install -r polaris_api/requirements.txt
+
+          echo "📌 Criando serviço systemd para manter a API rodando..."
+          cat <<EOL | sudo tee /etc/systemd/system/polaris-api.service > /dev/null
+          [Unit]
+          Description=Polaris API Service
+          After=network.target
+
+          [Service]
+          User=${{ secrets.SERVER_USER }}
+          WorkingDirectory=/home/${{ secrets.SERVER_USER }}/polaris-prod/polaris_api
+          ExecStart=/usr/bin/python3 main.py
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+          EOL
+          echo "📌 Ativando e iniciando o serviço da API..."
+          sudo systemctl daemon-reload
+          sudo systemctl enable polaris-api
+          sudo systemctl restart polaris-api
+
+          echo "✅ API configurada e rodando! 🚀"
+          EOF
+
+      - name: 📡 Iniciar Ngrok e Configurar Webhook do Telegram
+        run: |
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              -o ProxyCommand="cloudflared access ssh --hostname ${{ secrets.CLOUDFLARE_SSH_HOST }}" \
+              -i ~/.ssh/id_polaris \
+              ${{ secrets.SERVER_USER }}@localhost <<EOF
+          set -e  # Interrompe o script se houver erro
+          export TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}
+          export TELEGRAM_BOT_PORT=${{ secrets.TELEGRAM_BOT_PORT}}
+          export NGROK_URL=${{secrets.NGROK_URL}}
+          bash /home/${{ secrets.SERVER_USER }}/polaris-prod/polaris_setup/setup_ngrok.sh
+          EOF
+
+      - name: 🤖 Iniciar Telegram Bot
+        run: |
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              -o ProxyCommand="cloudflared access ssh --hostname ${{ secrets.CLOUDFLARE_SSH_HOST }}" \
+              -i ~/.ssh/id_polaris \
+              ${{ secrets.SERVER_USER }}@localhost <<EOF
+
+          set -e  # Interrompe o script se houver erro
+
+          cp /home/${{ secrets.SERVER_USER }}/.env /home/${{ secrets.SERVER_USER }}/polaris-prod/telegram_bot/
+
+          echo "🚀 Acessando servidor..."
+          cd /home/${{ secrets.SERVER_USER }}/polaris-prod/telegram_bot
+
+          echo "📌 Instalando dependências..."
+          pip3 install -r requirements.txt
+          sudo apt install -y ffmpeg
+
+          echo "📌 Criando serviço systemd para manter o Telegram Bot rodando..."
+          cat <<EOL | sudo tee /etc/systemd/system/polaris-telegram-bot.service > /dev/null
+          [Unit]
+          Description=Polaris Telegram Bot Service
+          After=network.target
+
+          [Service]
+          User=${{ secrets.SERVER_USER }}
+          WorkingDirectory=/home/${{ secrets.SERVER_USER }}/polaris-prod/telegram_bot
+          ExecStart=/usr/bin/python3 main.py
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+          EOL
+
+          echo "📌 Ativando e iniciando o serviço do Telegram Bot..."
+          sudo systemctl daemon-reload
+          sudo systemctl enable polaris-telegram-bot
+          sudo systemctl restart polaris-telegram-bot
+
+          echo "✅ Telegram Bot configurado e rodando! 🚀"
+          EOF

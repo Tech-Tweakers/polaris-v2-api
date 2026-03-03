@@ -1,5 +1,5 @@
 from groq import Groq
-from polaris_logger import log_info, log_success, log_warning, log_error
+from polaris_logger import log_info, log_success, log_warning, log_error, log_prompt
 
 
 class GroqLLM:
@@ -32,7 +32,7 @@ class GroqLLM:
         client = Groq(api_key=self.api_key)
 
         try:
-            log_info(f"📤 Enviando prompt para o backend remoto...")
+            log_prompt(f"📤 Enviando prompt para {self.model}", prompt)
 
             chat_completion = client.chat.completions.create(
                 messages=[
@@ -49,7 +49,10 @@ class GroqLLM:
             )
 
             for chunk in chat_completion:
-                if hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content:
+                if (
+                    hasattr(chunk.choices[0].delta, "content")
+                    and chunk.choices[0].delta.content
+                ):
                     yield chunk.choices[0].delta.content
 
             log_success(f"🧠 Streaming concluído.")
