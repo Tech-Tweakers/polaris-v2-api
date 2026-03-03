@@ -200,6 +200,11 @@ api.add_middleware(
 )
 
 
+@api.get("/health")
+def health():
+    return {"status": "ok", "service": "polaris-integrations", "tts_engine": TTS_ENGINE}
+
+
 @api.post("/audio-inference/")
 async def audio_inference(audio: UploadFile, session_id: str = Form(...)):
     endpoint = "/audio-inference/"
