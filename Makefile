@@ -41,7 +41,7 @@ install: install-cpu
 .PHONY: install-cpu
 install-cpu: venv
 	@echo "📦 Instalando dependências (modo CPU)..."
-	$(PIP) install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+	$(PIP) install torch==2.1.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cpu
 	$(PIP) install -r polaris_api/requirements.txt
 	$(PIP) install -r polaris_integrations/requirements.txt
 	@echo "✅ Dependências instaladas (CPU-only)!"
