@@ -2,7 +2,8 @@ import os
 import subprocess
 from moviepy.editor import AudioFileClip
 
-COQUI_SPEAKER_WAV = os.getenv("COQUI_SPEAKER_WAV", "polaris-voice.wav")
+_INTEGRATIONS_DIR = os.path.dirname(os.path.dirname(__file__))
+COQUI_SPEAKER_WAV = os.getenv("COQUI_SPEAKER_WAV", os.path.join(_INTEGRATIONS_DIR, "polaris-voice.wav"))
 
 # Lazy-loaded: modelo é carregado na primeira chamada
 _tts = None
