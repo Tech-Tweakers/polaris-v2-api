@@ -226,9 +226,11 @@ async def audio_inference(audio: UploadFile, session_id: str = Form(...)):
         segments, _ = whisper.transcribe(wav_path, language="pt")
         texto = " ".join([seg.text for seg in segments]).strip()
 
+        log.info(f"🔗 Chamando API: {POLARIS_API_URL} (texto: {texto[:80]}...)")
         res = requests.post(
             POLARIS_API_URL, json={"prompt": texto, "session_id": session_id}
         )
+        log.info(f"📡 API response status: {res.status_code}")
         resposta = res.json().get("resposta", "Erro na Polaris")
 
         gerar_audio(resposta, mp3_path)
@@ -244,6 +246,7 @@ async def audio_inference(audio: UploadFile, session_id: str = Form(...)):
 
     except Exception as e:
         erro = True
+        log.error(f"❌ audio-inference error: {e}", exc_info=True)
         integration_failures.labels(endpoint=endpoint, session_id=session_id).inc()
         return JSONResponse(status_code=500, content={"erro": str(e)})
 
